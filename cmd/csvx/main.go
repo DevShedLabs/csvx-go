@@ -73,27 +73,46 @@ func main() {
 }
 
 func runPackage(arguments []string) {
-	flags := flag.NewFlagSet("package", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	help := flags.Bool("help", false, "show command help")
-	output := flags.String("output", "", "output .csvx file")
-	if err := flags.Parse(arguments); err != nil {
-		os.Exit(2)
-	}
-	if *help {
-		printCommandHelp(os.Stdout, "package")
-		return
-	}
-	if flags.NArg() != 1 || *output == "" {
-		fmt.Fprintln(os.Stderr, "csvx package: provide an input directory and --output file.csvx")
+	input, output, showHelp, err := parsePackageArguments(arguments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "csvx package: %v\n\n", err)
 		printCommandHelp(os.Stderr, "package")
 		os.Exit(2)
 	}
-	if err := csvx.PackageDirectory(flags.Arg(0), *output); err != nil {
+	if showHelp {
+		printCommandHelp(os.Stdout, "package")
+		return
+	}
+	if err := csvx.PackageDirectory(input, output); err != nil {
 		fmt.Fprintf(os.Stderr, "csvx package: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("created: %s\n", *output)
+	fmt.Printf("created: %s\n", output)
+}
+
+func parsePackageArguments(arguments []string) (string, string, bool, error) {
+	var input, output string
+	for index := 0; index < len(arguments); index++ {
+		switch arguments[index] {
+		case "--help", "-h":
+			return "", "", true, nil
+		case "--output", "-o":
+			if index+1 >= len(arguments) {
+				return "", "", false, fmt.Errorf("--output requires a file path")
+			}
+			output = arguments[index+1]
+			index++
+		default:
+			if input != "" {
+				return "", "", false, fmt.Errorf("expected one input directory, got %q", arguments[index])
+			}
+			input = arguments[index]
+		}
+	}
+	if input == "" || output == "" {
+		return "", "", false, fmt.Errorf("provide an input directory and --output file.csvx")
+	}
+	return input, output, false, nil
 }
 
 func openInput(filename string) (*csvx.Workbook, error) {
