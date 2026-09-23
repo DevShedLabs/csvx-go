@@ -15,8 +15,9 @@ The initial package provides the Phase 1 foundation:
 - Typed metadata structures for columns, formulas, caches, styles, and validation
 - Sparse cell metadata addressed by A1 coordinates
 - Duplicate and unsafe ZIP entry rejection
+- Package and extract CLI commands for developer workflows
 
-Formula parsing, calculation, package writing, import/export, and the CLI will be added behind the
+Formula parsing, calculation, import/export, and full CLI operations will be added behind the
 same canonical workbook model.
 
 ## Development rule
@@ -124,6 +125,7 @@ csvx inspect ../csvx-spec/examples/minimal.csvx
 csvx validate report.csvx
 csvx validate ../csvx-spec/examples/minimal.csvx
 csvx package ../csvx-spec/examples/minimal.csvx --output minimal.csvx
+csvx extract minimal.csvx --output minimal-extracted
 ```
 
 Both `.csvx` ZIP files and unpacked CSVX package directories are accepted. The following commands

@@ -29,6 +29,70 @@ func Open(filename string) (*Workbook, error) {
 	return Load(file, info.Size())
 }
 
+// ExtractPackage extracts a CSVX ZIP package into an unpacked directory.
+func ExtractPackage(filename, directory string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("open CSVX package: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat CSVX package: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("CSVX package path is a directory: %s", filename)
+	}
+	archive, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return fmt.Errorf("read CSVX ZIP: %w", err)
+	}
+	entries, err := packageEntries(archive)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return fmt.Errorf("create extraction directory: %w", err)
+	}
+	root, err := filepath.Abs(directory)
+	if err != nil {
+		return fmt.Errorf("resolve extraction directory: %w", err)
+	}
+	for name, entry := range entries {
+		target, err := safeExtractionPath(root, name)
+		if err != nil {
+			return err
+		}
+		if entry.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return fmt.Errorf("create extracted directory %q: %w", name, err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("create directory for %q: %w", name, err)
+		}
+		body, err := readEntry(entry)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, body, 0o644); err != nil {
+			return fmt.Errorf("write extracted entry %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func safeExtractionPath(root, name string) (string, error) {
+	cleanName := filepath.Clean(filepath.FromSlash(name))
+	target := filepath.Join(root, cleanName)
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return "", fmt.Errorf("unsafe extraction path %q", name)
+	}
+	return target, nil
+}
+
 // PackageDirectory writes an unpacked CSVX package directory as a ZIP .csvx file.
 func PackageDirectory(directory, output string) error {
 	info, err := os.Stat(directory)

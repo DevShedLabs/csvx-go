@@ -27,7 +27,7 @@ func main() {
 	}
 
 	command := os.Args[1]
-	if command != "inspect" && command != "validate" && command != "package" {
+	if command != "inspect" && command != "validate" && command != "package" && command != "extract" {
 		fmt.Fprintf(os.Stderr, "csvx: unknown command %q\n\n", command)
 		printHelp(os.Stderr)
 		os.Exit(2)
@@ -35,6 +35,10 @@ func main() {
 
 	if command == "package" {
 		runPackage(os.Args[2:])
+		return
+	}
+	if command == "extract" {
+		runExtract(os.Args[2:])
 		return
 	}
 
@@ -115,6 +119,49 @@ func parsePackageArguments(arguments []string) (string, string, bool, error) {
 	return input, output, false, nil
 }
 
+func runExtract(arguments []string) {
+	input, output, showHelp, err := parseExtractArguments(arguments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "csvx extract: %v\n\n", err)
+		printCommandHelp(os.Stderr, "extract")
+		os.Exit(2)
+	}
+	if showHelp {
+		printCommandHelp(os.Stdout, "extract")
+		return
+	}
+	if err := csvx.ExtractPackage(input, output); err != nil {
+		fmt.Fprintf(os.Stderr, "csvx extract: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("extracted: %s\n", output)
+}
+
+func parseExtractArguments(arguments []string) (string, string, bool, error) {
+	var input, output string
+	for index := 0; index < len(arguments); index++ {
+		switch arguments[index] {
+		case "--help", "-h":
+			return "", "", true, nil
+		case "--output", "-o":
+			if index+1 >= len(arguments) {
+				return "", "", false, fmt.Errorf("--output requires a directory path")
+			}
+			output = arguments[index+1]
+			index++
+		default:
+			if input != "" {
+				return "", "", false, fmt.Errorf("expected one input package, got %q", arguments[index])
+			}
+			input = arguments[index]
+		}
+	}
+	if input == "" || output == "" {
+		return "", "", false, fmt.Errorf("provide an input .csvx file and --output directory")
+	}
+	return input, output, false, nil
+}
+
 func openInput(filename string) (*csvx.Workbook, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
@@ -146,6 +193,7 @@ func printHelp(output *os.File) {
 	fmt.Fprintln(output, "  inspect    Print the loaded workbook as JSON")
 	fmt.Fprintln(output, "  validate   Load and validate a CSVX package")
 	fmt.Fprintln(output, "  package    Package an unpacked directory into a .csvx ZIP file")
+	fmt.Fprintln(output, "  extract    Extract a .csvx ZIP file into an unpacked directory")
 	fmt.Fprintln(output, "  version    Print the CLI version")
 	fmt.Fprintln(output, "")
 	fmt.Fprintln(output, "Input may be a .csvx ZIP file or an unpacked CSVX directory.")
@@ -166,5 +214,9 @@ func printCommandHelp(output *os.File, command string) {
 		fmt.Fprintln(output, "Usage: csvx package [--help] --output <file.csvx> <directory>")
 		fmt.Fprintln(output, "")
 		fmt.Fprintln(output, "Packages an unpacked CSVX directory into a ZIP-based .csvx file.")
+	case "extract":
+		fmt.Fprintln(output, "Usage: csvx extract [--help] --output <directory> <file.csvx>")
+		fmt.Fprintln(output, "")
+		fmt.Fprintln(output, "Extracts a ZIP-based .csvx file into an unpacked directory for inspection or editing.")
 	}
 }
