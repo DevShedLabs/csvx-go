@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	csvx "github.com/csvx-org/csvx"
+	csvx "github.com/DevShedLabs/csvx-go"
 )
 
 const version = "0.1.0-dev"
