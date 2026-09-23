@@ -114,7 +114,7 @@ func loadSheet(entries map[string]*zip.File, entry SheetEntry) (*Sheet, error) {
 func packageEntries(archive *zip.Reader) (map[string]*zip.File, error) {
 	entries := make(map[string]*zip.File, len(archive.File))
 	for _, file := range archive.File {
-		if file.Name == "" || path.IsAbs(file.Name) || strings.HasPrefix(path.Clean(file.Name), "..") || strings.ContainsRune(file.Name, '\\x00') {
+		if file.Name == "" || path.IsAbs(file.Name) || strings.HasPrefix(path.Clean(file.Name), "..") || strings.ContainsRune(file.Name, '\x00') {
 			return nil, fmt.Errorf("invalid ZIP entry path %q", file.Name)
 		}
 		if _, exists := entries[file.Name]; exists {

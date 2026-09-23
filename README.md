@@ -108,7 +108,13 @@ go vet ./...
 
 ### Run the CLI
 
-The CLI is planned but not implemented yet. The intended commands are:
+Build the current CLI:
+
+```bash
+go build -o bin/csvx ./cmd/csvx
+```
+
+The currently supported commands are:
 
 ```bash
 csvx inspect report.csvx

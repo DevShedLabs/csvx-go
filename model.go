@@ -13,9 +13,9 @@ type Manifest struct {
 
 // Workbook is the canonical in-memory representation of a CSVX workbook.
 type Workbook struct {
-	ID          string       `json:"id"`
-	Version     string       `json:"version"`
-	Sheets      []*Sheet     `json:"sheets"`
+	ID          string      `json:"id"`
+	Version     string      `json:"version"`
+	Sheets      []*Sheet    `json:"sheets"`
 	Calculation Calculation `json:"calculation,omitempty"`
 }
 
@@ -27,13 +27,13 @@ type Calculation struct {
 
 // Sheet is a CSV-backed worksheet. Records excludes the CSV header row.
 type Sheet struct {
-	ID           string                   `json:"id"`
-	Name         string                   `json:"name"`
-	Path         string                   `json:"path"`
-	MetadataPath string                   `json:"metadata,omitempty"`
-	Columns      []Column                 `json:"columns"`
-	Records      [][]string               `json:"records"`
-	Cells        map[string]CellMetadata  `json:"cells,omitempty"`
+	ID           string                     `json:"id"`
+	Name         string                     `json:"name"`
+	Path         string                     `json:"path"`
+	MetadataPath string                     `json:"metadata,omitempty"`
+	Columns      []Column                   `json:"columns"`
+	Records      [][]string                 `json:"records"`
+	Cells        map[string]CellMetadata    `json:"cells,omitempty"`
 	Extra        map[string]json.RawMessage `json:"-"`
 }
 
