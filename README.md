@@ -18,7 +18,8 @@ The initial package provides the Phase 1 foundation:
 - Package and extract CLI commands for developer workflows
 
 Formula parsing, calculation, import/export, and full CLI operations will be added behind the
-same canonical workbook model.
+same canonical workbook model. Package writing and extract/package round-trip support are now
+available for developer workflows.
 
 ## Development rule
 
@@ -124,6 +125,7 @@ csvx inspect report.csvx
 csvx inspect ../csvx-spec/examples/minimal.csvx
 csvx validate report.csvx
 csvx validate ../csvx-spec/examples/minimal.csvx
+csvx validate --json ../csvx-spec/examples/minimal.csvx
 csvx package ../csvx-spec/examples/minimal.csvx --output minimal.csvx
 csvx extract minimal.csvx --output minimal-extracted
 ```

@@ -93,6 +93,92 @@ func safeExtractionPath(root, name string) (string, error) {
 	return target, nil
 }
 
+// WritePackage writes a workbook to a deterministic CSVX ZIP package.
+func WritePackage(workbook *Workbook, output string) error {
+	if workbook == nil {
+		return fmt.Errorf("workbook is nil")
+	}
+	if workbook.ID == "" || workbook.Version == "" || len(workbook.Sheets) == 0 {
+		return fmt.Errorf("workbook requires an ID, version, and at least one sheet")
+	}
+	file, err := os.Create(output)
+	if err != nil {
+		return fmt.Errorf("create CSVX package: %w", err)
+	}
+	defer file.Close()
+	writer := zip.NewWriter(file)
+	manifest := Manifest{Format: "csvx", Version: workbook.Version, Workbook: "workbook.json"}
+	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, Calculation: workbook.Calculation}
+	for _, sheet := range workbook.Sheets {
+		if sheet == nil || sheet.ID == "" || sheet.Name == "" {
+			return fmt.Errorf("sheet requires an ID and name")
+		}
+		path := sheet.Path
+		if path == "" {
+			path = "sheets/" + sheet.ID + ".csv"
+		}
+		metadataPath := sheet.MetadataPath
+		if metadataPath == "" && len(sheet.Cells) > 0 {
+			metadataPath = "sheets/" + sheet.ID + ".meta.json"
+		}
+		document.Sheets = append(document.Sheets, SheetEntry{ID: sheet.ID, Name: sheet.Name, Path: path, Metadata: metadataPath})
+		manifest.Files = append(manifest.Files, path)
+		if metadataPath != "" {
+			manifest.Files = append(manifest.Files, metadataPath)
+		}
+	}
+	manifest.Files = append([]string{"manifest.json", "workbook.json"}, manifest.Files...)
+	resources := map[string][]byte{}
+	resources["manifest.json"], err = json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode manifest: %w", err)
+	}
+	resources["workbook.json"], err = json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode workbook: %w", err)
+	}
+	for _, sheet := range workbook.Sheets {
+		path := sheet.Path
+		if path == "" {
+			path = "sheets/" + sheet.ID + ".csv"
+		}
+		var body bytes.Buffer
+		if err := writeCSV(&body, sheet); err != nil {
+			return err
+		}
+		resources[path] = body.Bytes()
+		if sheet.MetadataPath != "" || len(sheet.Cells) > 0 {
+			metadataPath := sheet.MetadataPath
+			if metadataPath == "" {
+				metadataPath = "sheets/" + sheet.ID + ".meta.json"
+			}
+			metadata := struct {
+				ID string `json:"id"`
+				Name string `json:"name"`
+				Columns []Column `json:"columns,omitempty"`
+				Cells map[string]CellMetadata `json:"cells,omitempty"`
+			}{ID: sheet.ID, Name: sheet.Name, Columns: sheet.Columns, Cells: sheet.Cells}
+			resources[metadataPath], err = json.MarshalIndent(metadata, "", "  ")
+			if err != nil {
+				return fmt.Errorf("encode metadata for %q: %w", sheet.Name, err)
+			}
+		}
+	}
+	for _, name := range manifest.Files {
+		entry, err := writer.Create(name)
+		if err != nil {
+			return fmt.Errorf("create ZIP entry %q: %w", name, err)
+		}
+		if _, err := entry.Write(resources[name]); err != nil {
+			return fmt.Errorf("write ZIP entry %q: %w", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("close CSVX package: %w", err)
+	}
+	return nil
+}
+
 // PackageDirectory writes an unpacked CSVX package directory as a ZIP .csvx file.
 func PackageDirectory(directory, output string) error {
 	info, err := os.Stat(directory)

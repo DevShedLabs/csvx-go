@@ -45,6 +45,7 @@ func main() {
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	help := flags.Bool("help", false, "show command help")
+	jsonOutput := flags.Bool("json", false, "write machine-readable JSON")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		os.Exit(2)
 	}
@@ -72,6 +73,24 @@ func main() {
 			os.Exit(1)
 		}
 	case "validate":
+		result := csvx.Validate(filename)
+		if *jsonOutput {
+			if err := printJSON(result); err != nil {
+				fmt.Fprintf(os.Stderr, "csvx validate: %v\n", err)
+				os.Exit(1)
+			}
+			if !result.Valid {
+				os.Exit(1)
+			}
+			return
+		}
+		if !result.Valid {
+			fmt.Fprintf(os.Stderr, "invalid: %s\n", filename)
+			for _, diagnostic := range result.Errors {
+				fmt.Fprintf(os.Stderr, "  [%s] %s\n", diagnostic.Code, diagnostic.Message)
+			}
+			os.Exit(1)
+		}
 		fmt.Printf("valid: %s\n", filename)
 	}
 }
@@ -210,6 +229,7 @@ func printCommandHelp(output *os.File, command string) {
 		fmt.Fprintln(output, "Usage: csvx validate [--help] <input>")
 		fmt.Fprintln(output, "")
 		fmt.Fprintln(output, "Loads a CSVX ZIP file or unpacked package directory and reports whether it is valid.")
+		fmt.Fprintln(output, "Use --json for machine-readable diagnostics.")
 	case "package":
 		fmt.Fprintln(output, "Usage: csvx package [--help] --output <file.csvx> <directory>")
 		fmt.Fprintln(output, "")
