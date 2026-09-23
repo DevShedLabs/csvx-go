@@ -117,8 +117,19 @@ go build -o bin/csvx ./cmd/csvx
 The currently supported commands are:
 
 ```bash
+csvx --help
+csvx version
 csvx inspect report.csvx
+csvx inspect ../csvx-spec/examples/minimal.csvx
 csvx validate report.csvx
+csvx validate ../csvx-spec/examples/minimal.csvx
+csvx package ../csvx-spec/examples/minimal.csvx --output minimal.csvx
+```
+
+Both `.csvx` ZIP files and unpacked CSVX package directories are accepted. The following commands
+are planned but not implemented yet:
+
+```bash
 csvx recalc report.csvx
 csvx convert report.xlsx report.csvx
 csvx convert report.csvx report.xlsx

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,7 +23,116 @@ func Open(filename string) (*Workbook, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stat CSVX file: %w", err)
 	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("CSVX path is a directory: %s", filename)
+	}
 	return Load(file, info.Size())
+}
+
+// PackageDirectory writes an unpacked CSVX package directory as a ZIP .csvx file.
+func PackageDirectory(directory, output string) error {
+	info, err := os.Stat(directory)
+	if err != nil {
+		return fmt.Errorf("stat CSVX directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("CSVX input is not a directory: %s", directory)
+	}
+	file, err := os.Create(output)
+	if err != nil {
+		return fmt.Errorf("create CSVX package: %w", err)
+	}
+	defer file.Close()
+	writer := zip.NewWriter(file)
+	err = filepath.Walk(directory, func(filename string, entry os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(directory, filename)
+		if err != nil {
+			return err
+		}
+		zipPath := filepath.ToSlash(relative)
+		archiveEntry, err := writer.Create(zipPath)
+		if err != nil {
+			return err
+		}
+		contents, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+		defer contents.Close()
+		_, err = io.Copy(archiveEntry, contents)
+		return err
+	})
+	if err != nil {
+		_ = writer.Close()
+		return fmt.Errorf("package CSVX directory: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("close CSVX package: %w", err)
+	}
+	return nil
+}
+
+// OpenDirectory reads an unpacked CSVX package directory.
+func OpenDirectory(directory string) (*Workbook, error) {
+	info, err := os.Stat(directory)
+	if err != nil {
+		return nil, fmt.Errorf("stat CSVX directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("CSVX path is not a directory: %s", directory)
+	}
+	manifest, err := readJSONFile[Manifest](filepath.Join(directory, "manifest.json"))
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Format != "csvx" || manifest.Version != "1.0" || manifest.Workbook != "workbook.json" {
+		return nil, fmt.Errorf("unsupported CSVX manifest")
+	}
+	workbookDoc, err := readJSONFile[WorkbookDocument](filepath.Join(directory, manifest.Workbook))
+	if err != nil {
+		return nil, err
+	}
+	if workbookDoc.Version != "1.0" || len(workbookDoc.Sheets) == 0 {
+		return nil, fmt.Errorf("invalid workbook resource")
+	}
+	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation}
+	for _, entry := range workbookDoc.Sheets {
+		sheet, err := loadDirectorySheet(directory, entry)
+		if err != nil {
+			return nil, err
+		}
+		workbook.Sheets = append(workbook.Sheets, sheet)
+	}
+	return workbook, nil
+}
+
+func loadDirectorySheet(directory string, entry SheetEntry) (*Sheet, error) {
+	body, err := os.ReadFile(filepath.Join(directory, filepath.FromSlash(entry.Path)))
+	if err != nil {
+		return nil, fmt.Errorf("read sheet CSV %q: %w", entry.Path, err)
+	}
+	header, records, err := readCSV(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("sheet %q: %w", entry.Name, err)
+	}
+	sheet := &Sheet{ID: entry.ID, Name: entry.Name, Path: entry.Path, MetadataPath: entry.Metadata, Records: records, Cells: map[string]CellMetadata{}}
+	for index, name := range header {
+		sheet.Columns = append(sheet.Columns, Column{ID: columnID(index), Name: name})
+	}
+	if entry.Metadata == "" {
+		return sheet, nil
+	}
+	metadataBody, err := os.ReadFile(filepath.Join(directory, filepath.FromSlash(entry.Metadata)))
+	if err != nil {
+		return nil, fmt.Errorf("read sheet metadata %q: %w", entry.Metadata, err)
+	}
+	return applySheetMetadata(sheet, metadataBody, entry)
 }
 
 // Load reads a CSVX ZIP package from an io.ReaderAt with the supplied size.
@@ -89,11 +199,15 @@ func loadSheet(entries map[string]*zip.File, entry SheetEntry) (*Sheet, error) {
 	if err != nil {
 		return nil, err
 	}
+	return applySheetMetadata(sheet, metadataBody, entry)
+}
+
+func applySheetMetadata(sheet *Sheet, metadataBody []byte, entry SheetEntry) (*Sheet, error) {
 	var resource struct {
-		ID      string                   `json:"id"`
-		Name    string                   `json:"name"`
-		Columns []Column                 `json:"columns"`
-		Cells   map[string]CellMetadata  `json:"cells"`
+		ID      string                  `json:"id"`
+		Name    string                  `json:"name"`
+		Columns []Column                `json:"columns"`
+		Cells   map[string]CellMetadata `json:"cells"`
 	}
 	if err := json.Unmarshal(metadataBody, &resource); err != nil {
 		return nil, fmt.Errorf("decode sheet metadata %q: %w", entry.Metadata, err)
@@ -123,6 +237,18 @@ func packageEntries(archive *zip.Reader) (map[string]*zip.File, error) {
 		entries[file.Name] = file
 	}
 	return entries, nil
+}
+
+func readJSONFile[T any](filename string) (T, error) {
+	var value T
+	body, err := os.ReadFile(filename)
+	if err != nil {
+		return value, fmt.Errorf("read %q: %w", filename, err)
+	}
+	if err := json.Unmarshal(body, &value); err != nil {
+		return value, fmt.Errorf("decode %q: %w", filename, err)
+	}
+	return value, nil
 }
 
 func decodeEntry[T any](entries map[string]*zip.File, name string) (T, error) {
