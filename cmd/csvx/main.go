@@ -27,7 +27,7 @@ func main() {
 	}
 
 	command := os.Args[1]
-	if command != "inspect" && command != "validate" && command != "package" && command != "extract" {
+	if command != "inspect" && command != "validate" && command != "package" && command != "extract" && command != "xlsx-inspect" {
 		fmt.Fprintf(os.Stderr, "csvx: unknown command %q\n\n", command)
 		printHelp(os.Stderr)
 		os.Exit(2)
@@ -39,6 +39,10 @@ func main() {
 	}
 	if command == "extract" {
 		runExtract(os.Args[2:])
+		return
+	}
+	if command == "xlsx-inspect" {
+		runXLSXInspect(os.Args[2:])
 		return
 	}
 
@@ -181,6 +185,23 @@ func parseExtractArguments(arguments []string) (string, string, bool, error) {
 	return input, output, false, nil
 }
 
+func runXLSXInspect(arguments []string) {
+	flags := flag.NewFlagSet("xlsx-inspect", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	jsonOutput := flags.Bool("json", false, "write machine-readable JSON")
+	if err := flags.Parse(arguments); err != nil { os.Exit(2) }
+	if flags.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "csvx xlsx-inspect: expected exactly one input .xlsx path")
+		printCommandHelp(os.Stderr, "xlsx-inspect")
+		os.Exit(2)
+	}
+	inspection, err := csvx.InspectXLSX(flags.Arg(0))
+	if err != nil { fmt.Fprintf(os.Stderr, "csvx xlsx-inspect: %v\n", err); os.Exit(1) }
+	if *jsonOutput { if err := printJSON(inspection); err != nil { fmt.Fprintf(os.Stderr, "csvx xlsx-inspect: %v\n", err); os.Exit(1) }; return }
+	fmt.Printf("XLSX: %s\nSHA-256: %s\nSheets: %d\nResources: %d\n", inspection.Filename, inspection.SHA256, len(inspection.Sheets), len(inspection.Resources))
+	for _, warning := range inspection.Warnings { fmt.Printf("[%s] %s: %s\n", warning.Severity, warning.Feature, warning.Message) }
+}
+
 func openInput(filename string) (*csvx.Workbook, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
@@ -213,6 +234,7 @@ func printHelp(output *os.File) {
 	fmt.Fprintln(output, "  validate   Load and validate a CSVX package")
 	fmt.Fprintln(output, "  package    Package an unpacked directory into a .csvx ZIP file")
 	fmt.Fprintln(output, "  extract    Extract a .csvx ZIP file into an unpacked directory")
+	fmt.Fprintln(output, "  xlsx-inspect Inspect an XLSX package and report detected features")
 	fmt.Fprintln(output, "  version    Print the CLI version")
 	fmt.Fprintln(output, "")
 	fmt.Fprintln(output, "Input may be a .csvx ZIP file or an unpacked CSVX directory.")
@@ -238,5 +260,9 @@ func printCommandHelp(output *os.File, command string) {
 		fmt.Fprintln(output, "Usage: csvx extract [--help] --output <directory> <file.csvx>")
 		fmt.Fprintln(output, "")
 		fmt.Fprintln(output, "Extracts a ZIP-based .csvx file into an unpacked directory for inspection or editing.")
+	case "xlsx-inspect":
+		fmt.Fprintln(output, "Usage: csvx xlsx-inspect [--json] <file.xlsx>")
+		fmt.Fprintln(output, "")
+		fmt.Fprintln(output, "Inspects an XLSX package without executing macros or external links.")
 	}
 }
