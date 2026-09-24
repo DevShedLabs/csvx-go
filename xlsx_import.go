@@ -89,11 +89,10 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 	if maxColumn == 0 { maxColumn = 1 }
 	columns := make([]Column, maxColumn)
 	for column := range columns { columns[column] = Column{ID: columnID(column), Name: columnID(column)} }
-	for column := range columns { ref := cellReference(column, 0); if value := values[ref]; value != "" { columns[column].Name = value } }
-	seen := map[string]bool{}
-	for column := range columns { original := columns[column].Name; if original == "" { original = columns[column].ID }; candidate := original; for suffix := 2; seen[candidate]; suffix++ { candidate = fmt.Sprintf("%s (%d)", original, suffix) }; columns[column].Name, seen[candidate] = candidate, true }
+	// XLSX row 1 is a real worksheet row. CSVX requires a header row, so use
+	// generated stable headers and preserve all worksheet rows as records.
 	records := make([][]string, 0, maxRow)
-	for row := 1; row < maxRow; row++ { record := make([]string, maxColumn); for column := range record { record[column] = values[cellReference(column, row)] }; records = append(records, record) }
+	for row := 0; row < maxRow; row++ { record := make([]string, maxColumn); for column := range record { record[column] = values[cellReference(column, row)] }; records = append(records, record) }
 	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, Cells: metadata}, nil
 }
 
