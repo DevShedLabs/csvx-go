@@ -128,6 +128,8 @@ csvx validate ../csvx-spec/examples/minimal.csvx
 csvx validate --json ../csvx-spec/examples/minimal.csvx
 csvx package ../csvx-spec/examples/minimal.csvx --output minimal.csvx
 csvx extract minimal.csvx --output minimal-extracted
+csvx xlsx-inspect ../csvx-spec/examples/example.xlsx
+csvx xlsx-inspect --json ../csvx-spec/examples/example.xlsx
 ```
 
 Both `.csvx` ZIP files and unpacked CSVX package directories are accepted. The following commands
