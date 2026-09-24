@@ -30,17 +30,14 @@ func importXLSXSource(input, output string) error {
 	if err != nil {
 		return fmt.Errorf("read XLSX source: %w", err)
 	}
-	workbook := &Workbook{
-		ID:      strings.TrimSuffix(filepath.Base(input), filepath.Ext(input)),
-		Version: "1.0",
-		Sheets:  placeholderSheets(inspection),
-		Source: &SourceMetadata{
-			Format: inspection.Format, Filename: inspection.Filename, SHA256: inspection.SHA256,
-			Authority: "original", ImportedAt: time.Now().UTC().Format(time.RFC3339),
-			Importer: "csvx-go", Features: inspection.Features, Warnings: inspection.Warnings,
-		},
-		SourceBytes: source,
+	workbook, err := importXLSXWorkbook(input, inspection)
+	if err != nil { return err }
+	workbook.Source = &SourceMetadata{
+		Format: inspection.Format, Filename: inspection.Filename, SHA256: inspection.SHA256,
+		Authority: "original", ImportedAt: time.Now().UTC().Format(time.RFC3339),
+		Importer: "csvx-go", Features: inspection.Features, Warnings: inspection.Warnings,
 	}
+	workbook.SourceBytes = source
 	return WritePackage(workbook, output)
 }
 
