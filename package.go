@@ -108,7 +108,7 @@ func WritePackage(workbook *Workbook, output string) error {
 	defer file.Close()
 	writer := zip.NewWriter(file)
 	manifest := Manifest{Format: "csvx", Version: workbook.Version, Workbook: "workbook.json"}
-	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, Calculation: workbook.Calculation}
+	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, Calculation: workbook.Calculation, Source: workbook.Source}
 	for _, sheet := range workbook.Sheets {
 		if sheet == nil || sheet.ID == "" || sheet.Name == "" {
 			return fmt.Errorf("sheet requires an ID and name")
@@ -128,6 +128,9 @@ func WritePackage(workbook *Workbook, output string) error {
 		}
 	}
 	manifest.Files = append([]string{"manifest.json", "workbook.json"}, manifest.Files...)
+	if workbook.Source != nil && len(workbook.SourceBytes) > 0 {
+		manifest.Files = append(manifest.Files, "source/original.xlsx", "source/source.json")
+	}
 	resources := map[string][]byte{}
 	resources["manifest.json"], err = json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -163,6 +166,11 @@ func WritePackage(workbook *Workbook, output string) error {
 				return fmt.Errorf("encode metadata for %q: %w", sheet.Name, err)
 			}
 		}
+	}
+	if workbook.Source != nil && len(workbook.SourceBytes) > 0 {
+		resources["source/original.xlsx"] = workbook.SourceBytes
+		resources["source/source.json"], err = json.MarshalIndent(workbook.Source, "", "  ")
+		if err != nil { return fmt.Errorf("encode source metadata: %w", err) }
 	}
 	for _, name := range manifest.Files {
 		entry, err := writer.Create(name)
@@ -251,7 +259,11 @@ func OpenDirectory(directory string) (*Workbook, error) {
 	if workbookDoc.Version != "1.0" || len(workbookDoc.Sheets) == 0 {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
-	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation}
+	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
+	if workbook.Source != nil {
+		workbook.SourceBytes, err = os.ReadFile(filepath.Join(directory, "source", "original.xlsx"))
+		if err != nil { return nil, fmt.Errorf("read embedded XLSX source: %w", err) }
+	}
 	for _, entry := range workbookDoc.Sheets {
 		sheet, err := loadDirectorySheet(directory, entry)
 		if err != nil {
@@ -310,7 +322,13 @@ func Load(reader io.ReaderAt, size int64) (*Workbook, error) {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
 
-	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation}
+	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
+	if workbook.Source != nil {
+		source, ok := entries["source/original.xlsx"]
+		if !ok { return nil, fmt.Errorf("missing embedded XLSX source") }
+		workbook.SourceBytes, err = readEntry(source)
+		if err != nil { return nil, err }
+	}
 	for _, entry := range workbookDoc.Sheets {
 		sheet, err := loadSheet(entries, entry)
 		if err != nil {

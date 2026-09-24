@@ -13,10 +13,24 @@ type Manifest struct {
 
 // Workbook is the canonical in-memory representation of a CSVX workbook.
 type Workbook struct {
-	ID          string      `json:"id"`
-	Version     string      `json:"version"`
-	Sheets      []*Sheet    `json:"sheets"`
-	Calculation Calculation `json:"calculation,omitempty"`
+	ID          string           `json:"id"`
+	Version     string           `json:"version"`
+	Sheets      []*Sheet         `json:"sheets"`
+	Calculation Calculation      `json:"calculation,omitempty"`
+	Source      *SourceMetadata  `json:"source,omitempty"`
+	SourceBytes []byte           `json:"-"`
+}
+
+// SourceMetadata describes an embedded external workbook preserved for interoperability.
+type SourceMetadata struct {
+	Format     string            `json:"format"`
+	Filename   string            `json:"filename"`
+	SHA256     string            `json:"sha256"`
+	Authority  string            `json:"authority"`
+	ImportedAt string            `json:"importedAt"`
+	Importer   string            `json:"importer"`
+	Features   XLSXFeatureCounts `json:"features,omitempty"`
+	Warnings   []XLSXDiagnostic  `json:"warnings,omitempty"`
 }
 
 // Calculation contains workbook calculation settings.
@@ -70,8 +84,9 @@ type SheetEntry struct {
 
 // WorkbookDocument is the serialized workbook resource.
 type WorkbookDocument struct {
-	ID          string       `json:"id"`
-	Version     string       `json:"version"`
-	Sheets      []SheetEntry `json:"sheets"`
-	Calculation Calculation  `json:"calculation,omitempty"`
+	ID          string          `json:"id"`
+	Version     string          `json:"version"`
+	Sheets      []SheetEntry   `json:"sheets"`
+	Calculation Calculation     `json:"calculation,omitempty"`
+	Source      *SourceMetadata `json:"source,omitempty"`
 }

@@ -2,6 +2,7 @@ package csvx
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -62,7 +63,7 @@ func InspectXLSX(filename string) (*XLSXInspection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read XLSX: %w", err)
 	}
-	archive, err := zip.NewReader(strings.NewReader(string(body)), int64(len(body)))
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return nil, fmt.Errorf("read XLSX ZIP: %w", err)
 	}

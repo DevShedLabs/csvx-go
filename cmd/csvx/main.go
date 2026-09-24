@@ -27,7 +27,7 @@ func main() {
 	}
 
 	command := os.Args[1]
-	if command != "inspect" && command != "validate" && command != "package" && command != "extract" && command != "xlsx-inspect" {
+	if command != "inspect" && command != "validate" && command != "package" && command != "extract" && command != "xlsx-inspect" && command != "convert" {
 		fmt.Fprintf(os.Stderr, "csvx: unknown command %q\n\n", command)
 		printHelp(os.Stderr)
 		os.Exit(2)
@@ -43,6 +43,10 @@ func main() {
 	}
 	if command == "xlsx-inspect" {
 		runXLSXInspect(os.Args[2:])
+		return
+	}
+	if command == "convert" {
+		runConvert(os.Args[2:])
 		return
 	}
 
@@ -185,6 +189,20 @@ func parseExtractArguments(arguments []string) (string, string, bool, error) {
 	return input, output, false, nil
 }
 
+func runConvert(arguments []string) {
+	input, output, showHelp, err := parseConvertArguments(arguments)
+	if err != nil { fmt.Fprintf(os.Stderr, "csvx convert: %v\n\n", err); printCommandHelp(os.Stderr, "convert"); os.Exit(2) }
+	if showHelp { printCommandHelp(os.Stdout, "convert"); return }
+	if err := csvx.Convert(input, output); err != nil { fmt.Fprintf(os.Stderr, "csvx convert: %v\n", err); os.Exit(1) }
+	fmt.Printf("created: %s\n", output)
+}
+
+func parseConvertArguments(arguments []string) (string, string, bool, error) {
+	if len(arguments) == 1 && (arguments[0] == "--help" || arguments[0] == "-h") { return "", "", true, nil }
+	if len(arguments) != 2 { return "", "", false, fmt.Errorf("provide an input file and output file") }
+	return arguments[0], arguments[1], false, nil
+}
+
 func runXLSXInspect(arguments []string) {
 	flags := flag.NewFlagSet("xlsx-inspect", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -235,6 +253,7 @@ func printHelp(output *os.File) {
 	fmt.Fprintln(output, "  package    Package an unpacked directory into a .csvx ZIP file")
 	fmt.Fprintln(output, "  extract    Extract a .csvx ZIP file into an unpacked directory")
 	fmt.Fprintln(output, "  xlsx-inspect Inspect an XLSX package and report detected features")
+	fmt.Fprintln(output, "  convert    Convert XLSX to CSVX or recover embedded XLSX source")
 	fmt.Fprintln(output, "  version    Print the CLI version")
 	fmt.Fprintln(output, "")
 	fmt.Fprintln(output, "Input may be a .csvx ZIP file or an unpacked CSVX directory.")
@@ -264,5 +283,9 @@ func printCommandHelp(output *os.File, command string) {
 		fmt.Fprintln(output, "Usage: csvx xlsx-inspect [--json] <file.xlsx>")
 		fmt.Fprintln(output, "")
 		fmt.Fprintln(output, "Inspects an XLSX package without executing macros or external links.")
+	case "convert":
+		fmt.Fprintln(output, "Usage: csvx convert <input.xlsx|csvx> <output.csvx|xlsx>")
+		fmt.Fprintln(output, "")
+		fmt.Fprintln(output, "Imports XLSX with embedded source preservation, or recovers an unchanged embedded XLSX source.")
 	}
 }
