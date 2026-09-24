@@ -109,6 +109,7 @@ func WritePackage(workbook *Workbook, output string) error {
 	writer := zip.NewWriter(file)
 	manifest := Manifest{Format: "csvx", Version: workbook.Version, Workbook: "workbook.json"}
 	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, Calculation: workbook.Calculation, Source: workbook.Source}
+	if len(workbook.Styles) > 0 { document.Styles = "styles.json"; manifest.Files = append(manifest.Files, "styles.json") }
 	for _, sheet := range workbook.Sheets {
 		if sheet == nil || sheet.ID == "" || sheet.Name == "" {
 			return fmt.Errorf("sheet requires an ID and name")
@@ -166,6 +167,10 @@ func WritePackage(workbook *Workbook, output string) error {
 				return fmt.Errorf("encode metadata for %q: %w", sheet.Name, err)
 			}
 		}
+	}
+	if len(workbook.Styles) > 0 {
+		resources["styles.json"], err = json.MarshalIndent(map[string]any{"styles": workbook.Styles}, "", "  ")
+		if err != nil { return fmt.Errorf("encode styles: %w", err) }
 	}
 	if workbook.Source != nil && len(workbook.SourceBytes) > 0 {
 		resources["source/original.xlsx"] = workbook.SourceBytes

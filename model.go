@@ -17,8 +17,9 @@ type Workbook struct {
 	Version     string           `json:"version"`
 	Sheets      []*Sheet         `json:"sheets"`
 	Calculation Calculation      `json:"calculation,omitempty"`
-	Source      *SourceMetadata  `json:"source,omitempty"`
-	SourceBytes []byte           `json:"-"`
+	Source      *SourceMetadata              `json:"source,omitempty"`
+	Styles      map[string]map[string]any     `json:"styles,omitempty"`
+	SourceBytes []byte                        `json:"-"`
 }
 
 // SourceMetadata describes an embedded external workbook preserved for interoperability.
@@ -89,4 +90,5 @@ type WorkbookDocument struct {
 	Sheets      []SheetEntry   `json:"sheets"`
 	Calculation Calculation     `json:"calculation,omitempty"`
 	Source      *SourceMetadata `json:"source,omitempty"`
+	Styles      string          `json:"styles,omitempty"`
 }

@@ -21,9 +21,11 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 	if err != nil { return nil, err }
 	shared, err := parseSharedStrings(files["xl/sharedStrings.xml"])
 	if err != nil { return nil, err }
+	styles, err := parseXLSXStyles(files["xl/styles.xml"])
+	if err != nil { return nil, err }
 	names, paths, err := xlsxSheetPaths(files)
 	if err != nil { return nil, err }
-	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0"}
+	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0", Styles: styles}
 	for index, sheetPath := range paths {
 		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared)
 		if err != nil { return nil, fmt.Errorf("import sheet %q: %w", names[index], err) }
