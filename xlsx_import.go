@@ -30,7 +30,7 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 	if err != nil { return nil, err }
 	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0", Styles: styles}
 	for index, sheetPath := range paths {
-		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared)
+		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles)
 		if err != nil { return nil, fmt.Errorf("import sheet %q: %w", names[index], err) }
 		workbook.Sheets = append(workbook.Sheets, sheet)
 	}
@@ -76,7 +76,7 @@ func xlsxSheetPaths(files map[string][]byte) ([]string, []string, error) {
 	return names, paths, nil
 }
 
-func importXLSXSheet(body []byte, name string, index int, shared []string) (*Sheet, error) {
+func importXLSXSheet(body []byte, name string, index int, shared []string, styles map[string]map[string]any) (*Sheet, error) {
 	var worksheet xlsxWorksheet
 	if err := xml.Unmarshal(body, &worksheet); err != nil { return nil, err }
 	maxColumn, maxRow := 0, 0
@@ -86,7 +86,7 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 	columnWidths := make(map[int]float64)
 	for _, column := range worksheet.Cols { min, _ := strconv.Atoi(column.Min); max, _ := strconv.Atoi(column.Max); width, _ := strconv.ParseFloat(column.Width, 64); for index := min; index <= max; index++ { columnWidths[index-1] = width } }
 	for _, row := range worksheet.Rows { rowNumber, _ := strconv.Atoi(row.Number); if rowNumber == 0 { rowNumber = maxRow + 1 }; height, _ := strconv.ParseFloat(row.Height, 64); if rowNumber > 0 && height > 0 { rowHeights[rowNumber] = height }; if rowNumber > maxRow { maxRow = rowNumber }
-		for cellIndex, cell := range row.Cells { ref := cell.Ref; if ref == "" { ref = cellReference(cellIndex, rowNumber-1) }; column, _ := splitCellReference(ref); if column >= maxColumn { maxColumn = column + 1 }; value := xlsxCellValue(cell, shared); values[ref] = value; if cell.Formula != "" || cell.Style != "" { metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Style: cell.Style} }; if cell.Formula != "" { cached := typedValue(cell.Type, value); metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Cached: &cached, Style: cell.Style} } }
+		for cellIndex, cell := range row.Cells { ref := cell.Ref; if ref == "" { ref = cellReference(cellIndex, rowNumber-1) }; column, _ := splitCellReference(ref); if column >= maxColumn { maxColumn = column + 1 }; value := xlsxCellValue(cell, shared); values[ref] = value; cellMetadata := CellMetadata{Type: xlsxValueType(cell, styles)}; if cell.Formula != "" || cell.Style != "" { cellMetadata.Formula, cellMetadata.Style = formulaValue(cell.Formula), cell.Style }; if cell.Formula != "" { cached := typedValue(cell.Type, value); cellMetadata.Cached = &cached }; if cellMetadata.Type != "" || cellMetadata.Formula != "" || cellMetadata.Style != "" { metadata[ref] = cellMetadata } }
 	}
 	if maxColumn == 0 { maxColumn = 1 }
 	columns := make([]Column, maxColumn)
@@ -99,6 +99,7 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 }
 
 func xlsxCellValue(cell xlsxCell, shared []string) string { if cell.Type == "s" { index, _ := strconv.Atoi(cell.Value); if index >= 0 && index < len(shared) { return shared[index] } }; if cell.Type == "inlineStr" { return strings.Join(cell.Inline.Text, "") }; if cell.Type == "b" && cell.Value == "1" { return "TRUE" }; return cell.Value }
+func xlsxValueType(cell xlsxCell, styles map[string]map[string]any) string { if cell.Type == "b" { return "boolean" }; if cell.Type == "e" { return "error" }; if cell.Type == "s" || cell.Type == "inlineStr" || cell.Type == "str" { return "string" }; if cell.Value == "" && cell.Formula == "" { return "blank" }; if style, ok := styles[cell.Style]; ok { format, _ := style["numberFormat"].(string); lower := strings.ToLower(format); if strings.Contains(lower, "h") || strings.Contains(lower, "s") { return "time" }; if strings.Contains(lower, "d") || strings.Contains(lower, "y") { return "date" }; if strings.Contains(format, "$") || strings.Contains(format, "€") || strings.Contains(format, "£") || strings.Contains(lower, "%") || strings.Contains(format, ".") { return "decimal" } }; if strings.Contains(cell.Value, ".") { return "decimal" }; return "integer" }
 func formulaValue(value string) string { if value == "" { return "" }; if strings.HasPrefix(value, "=") { return value }; return "=" + value }
 func typedValue(kind, value string) Value { switch kind { case "b": return Value{Type: "boolean", Value: value == "TRUE" || value == "1"}; case "e": return Value{Type: "error", Code: strings.TrimPrefix(value, "#")}; default: return Value{Type: "string", Value: value} } }
 func cellReference(column, row int) string { return columnID(column) + strconv.Itoa(row+1) }

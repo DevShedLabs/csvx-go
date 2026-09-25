@@ -63,6 +63,7 @@ type Column struct {
 
 // CellMetadata contains behavior that cannot be represented in CSV.
 type CellMetadata struct {
+	Type       string          `json:"type,omitempty"`
 	Formula    string          `json:"formula,omitempty"`
 	Cached     *Value          `json:"cached,omitempty"`
 	Style      string          `json:"style,omitempty"`
