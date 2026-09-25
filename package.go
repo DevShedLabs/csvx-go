@@ -160,8 +160,9 @@ func WritePackage(workbook *Workbook, output string) error {
 				ID string `json:"id"`
 				Name string `json:"name"`
 				Columns []Column `json:"columns,omitempty"`
+				RowHeights map[int]float64 `json:"rowHeights,omitempty"`
 				Cells map[string]CellMetadata `json:"cells,omitempty"`
-			}{ID: sheet.ID, Name: sheet.Name, Columns: sheet.Columns, Cells: sheet.Cells}
+			}{ID: sheet.ID, Name: sheet.Name, Columns: sheet.Columns, RowHeights: sheet.RowHeights, Cells: sheet.Cells}
 			resources[metadataPath], err = json.MarshalIndent(metadata, "", "  ")
 			if err != nil {
 				return fmt.Errorf("encode metadata for %q: %w", sheet.Name, err)
@@ -379,8 +380,9 @@ func applySheetMetadata(sheet *Sheet, metadataBody []byte, entry SheetEntry) (*S
 	var resource struct {
 		ID      string                  `json:"id"`
 		Name    string                  `json:"name"`
-		Columns []Column                `json:"columns"`
-		Cells   map[string]CellMetadata `json:"cells"`
+		Columns    []Column                `json:"columns"`
+		RowHeights map[int]float64          `json:"rowHeights"`
+		Cells      map[string]CellMetadata `json:"cells"`
 	}
 	if err := json.Unmarshal(metadataBody, &resource); err != nil {
 		return nil, fmt.Errorf("decode sheet metadata %q: %w", entry.Metadata, err)
@@ -394,6 +396,7 @@ func applySheetMetadata(sheet *Sheet, metadataBody []byte, entry SheetEntry) (*S
 		}
 		sheet.Columns = resource.Columns
 	}
+	sheet.RowHeights = resource.RowHeights
 	sheet.Cells = resource.Cells
 	return sheet, nil
 }

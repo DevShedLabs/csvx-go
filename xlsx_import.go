@@ -13,7 +13,10 @@ import (
 type xlsxWorkbook struct { Sheets []struct { Name string `xml:"name,attr"`; RID string `xml:"id,attr"` } `xml:"sheets>sheet"` }
 type xlsxRelationships struct { Relationships []struct { ID string `xml:"Id,attr"`; Target string `xml:"Target,attr"` } `xml:"Relationship"` }
 type xlsxSharedStrings struct { Items []struct { Text []string `xml:"t"` } `xml:"si"` }
-type xlsxWorksheet struct { Rows []struct { Cells []xlsxCell `xml:"c"` } `xml:"sheetData>row"` }
+type xlsxWorksheet struct {
+	Cols []struct { Min string `xml:"min,attr"`; Max string `xml:"max,attr"`; Width string `xml:"width,attr"`; CustomWidth string `xml:"customWidth,attr"` } `xml:"cols>col"`
+	Rows []struct { Number string `xml:"r,attr"`; Height string `xml:"ht,attr"`; CustomHeight string `xml:"customHeight,attr"`; Cells []xlsxCell `xml:"c"` } `xml:"sheetData>row"`
+}
 type xlsxCell struct { Ref string `xml:"r,attr"`; Type string `xml:"t,attr"`; Style string `xml:"s,attr"`; Formula string `xml:"f"`; Value string `xml:"v"`; Inline struct { Text []string `xml:"t"` } `xml:"is"` }
 
 func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook, error) {
@@ -79,6 +82,10 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 	maxColumn, maxRow := 0, 0
 	values := make(map[string]string)
 	metadata := make(map[string]CellMetadata)
+	rowHeights := make(map[int]float64)
+	columnWidths := make(map[int]float64)
+	for _, column := range worksheet.Cols { min, _ := strconv.Atoi(column.Min); max, _ := strconv.Atoi(column.Max); width, _ := strconv.ParseFloat(column.Width, 64); for index := min; index <= max; index++ { columnWidths[index-1] = width } }
+	for _, row := range worksheet.Rows { rowNumber, _ := strconv.Atoi(row.Number); height, _ := strconv.ParseFloat(row.Height, 64); if rowNumber > 0 && height > 0 { rowHeights[rowNumber] = height } }
 	for rowIndex, row := range worksheet.Rows {
 		for cellIndex, cell := range row.Cells {
 			ref := cell.Ref; if ref == "" { ref = cellReference(cellIndex, rowIndex) }
@@ -90,12 +97,12 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 	}
 	if maxColumn == 0 { maxColumn = 1 }
 	columns := make([]Column, maxColumn)
-	for column := range columns { columns[column] = Column{ID: columnID(column), Name: columnID(column)} }
+	for column := range columns { columns[column] = Column{ID: columnID(column), Name: columnID(column), Width: columnWidths[column]} }
 	// XLSX row 1 is a real worksheet row. CSVX requires a header row, so use
 	// generated stable headers and preserve all worksheet rows as records.
 	records := make([][]string, 0, maxRow)
 	for row := 0; row < maxRow; row++ { record := make([]string, maxColumn); for column := range record { record[column] = values[cellReference(column, row)] }; records = append(records, record) }
-	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, Cells: metadata}, nil
+	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, RowHeights: rowHeights, Cells: metadata}, nil
 }
 
 func xlsxCellValue(cell xlsxCell, shared []string) string { if cell.Type == "s" { index, _ := strconv.Atoi(cell.Value); if index >= 0 && index < len(shared) { return shared[index] } }; if cell.Type == "inlineStr" { return strings.Join(cell.Inline.Text, "") }; if cell.Type == "b" && cell.Value == "1" { return "TRUE" }; return cell.Value }

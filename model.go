@@ -48,15 +48,17 @@ type Sheet struct {
 	MetadataPath string                     `json:"metadata,omitempty"`
 	Columns      []Column                   `json:"columns"`
 	Records      [][]string                 `json:"records"`
+	RowHeights   map[int]float64            `json:"rowHeights,omitempty"`
 	Cells        map[string]CellMetadata    `json:"cells,omitempty"`
 	Extra        map[string]json.RawMessage `json:"-"`
 }
 
 // Column describes a CSV column and its optional CSVX type.
 type Column struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Type  string  `json:"type,omitempty"`
+	Width float64 `json:"width,omitempty"`
 }
 
 // CellMetadata contains behavior that cannot be represented in CSV.

@@ -13,7 +13,20 @@ type xlsxStyles struct {
 	Fills struct { Items []xlsxFill `xml:"fill"` } `xml:"fills"`
 	CellXfs struct { Items []xlsxXF `xml:"xf"` } `xml:"cellXfs"`
 }
-type xlsxXF struct { NumFmtID string `xml:"numFmtId,attr"`; FontID string `xml:"fontId,attr"`; FillID string `xml:"fillId,attr"`; ApplyNumberFormat string `xml:"applyNumberFormat,attr"` }
+type xlsxXF struct {
+	NumFmtID string `xml:"numFmtId,attr"`
+	FontID string `xml:"fontId,attr"`
+	FillID string `xml:"fillId,attr"`
+	ApplyNumberFormat string `xml:"applyNumberFormat,attr"`
+	Alignment *xlsxAlignment `xml:"alignment"`
+}
+type xlsxAlignment struct {
+	Horizontal string `xml:"horizontal,attr"`
+	Vertical string `xml:"vertical,attr"`
+	WrapText string `xml:"wrapText,attr"`
+	TextRotation string `xml:"textRotation,attr"`
+	Indent string `xml:"indent,attr"`
+}
 type xlsxFont struct { Name []struct { Value string `xml:"val,attr"` } `xml:"name"`; Size []struct { Value string `xml:"val,attr"` } `xml:"sz"`; Bold []struct{} `xml:"b"`; Italic []struct{} `xml:"i"`; Color []xlsxColor `xml:"color"` }
 type xlsxFill struct { Pattern []struct { Type string `xml:"patternType,attr"`; Foreground []xlsxColor `xml:"fgColor"` } `xml:"patternFill"` }
 type xlsxColor struct { RGB string `xml:"rgb,attr"`; Theme string `xml:"theme,attr"`; Indexed string `xml:"indexed,attr"` }
@@ -30,6 +43,7 @@ func parseXLSXStyles(body []byte) (map[string]map[string]any, error) {
 		if value, ok := formats[xf.NumFmtID]; ok { style["numberFormat"] = value } else if code := builtinNumberFormat(xf.NumFmtID); code != "" { style["numberFormat"] = code }
 		if font, ok := indexedFont(resource.Fonts.Items, xf.FontID); ok { style["font"] = font }
 		if fill, ok := indexedFill(resource.Fills.Items, xf.FillID); ok { style["fill"] = fill }
+		if xf.Alignment != nil { style["alignment"] = map[string]any{"horizontal": xf.Alignment.Horizontal, "vertical": xf.Alignment.Vertical, "wrapText": xf.Alignment.WrapText == "1" || strings.EqualFold(xf.Alignment.WrapText, "true"), "textRotation": xf.Alignment.TextRotation, "indent": xf.Alignment.Indent} }
 		styles[strconv.Itoa(index)] = style
 	}
 	return styles, nil
