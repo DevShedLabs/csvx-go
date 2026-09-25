@@ -85,15 +85,8 @@ func importXLSXSheet(body []byte, name string, index int, shared []string) (*She
 	rowHeights := make(map[int]float64)
 	columnWidths := make(map[int]float64)
 	for _, column := range worksheet.Cols { min, _ := strconv.Atoi(column.Min); max, _ := strconv.Atoi(column.Max); width, _ := strconv.ParseFloat(column.Width, 64); for index := min; index <= max; index++ { columnWidths[index-1] = width } }
-	for _, row := range worksheet.Rows { rowNumber, _ := strconv.Atoi(row.Number); height, _ := strconv.ParseFloat(row.Height, 64); if rowNumber > 0 && height > 0 { rowHeights[rowNumber] = height } }
-	for rowIndex, row := range worksheet.Rows {
-		for cellIndex, cell := range row.Cells {
-			ref := cell.Ref; if ref == "" { ref = cellReference(cellIndex, rowIndex) }
-			column, rowNumber := splitCellReference(ref); if column > maxColumn { maxColumn = column }; if rowNumber > maxRow { maxRow = rowNumber }
-			value := xlsxCellValue(cell, shared); values[ref] = value
-			if cell.Formula != "" || cell.Style != "" { metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Style: cell.Style} }
-			if cell.Formula != "" { cached := typedValue(cell.Type, value); metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Cached: &cached, Style: cell.Style} }
-		}
+	for _, row := range worksheet.Rows { rowNumber, _ := strconv.Atoi(row.Number); if rowNumber == 0 { rowNumber = maxRow + 1 }; height, _ := strconv.ParseFloat(row.Height, 64); if rowNumber > 0 && height > 0 { rowHeights[rowNumber] = height }; if rowNumber > maxRow { maxRow = rowNumber }
+		for cellIndex, cell := range row.Cells { ref := cell.Ref; if ref == "" { ref = cellReference(cellIndex, rowNumber-1) }; column, _ := splitCellReference(ref); if column >= maxColumn { maxColumn = column + 1 }; value := xlsxCellValue(cell, shared); values[ref] = value; if cell.Formula != "" || cell.Style != "" { metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Style: cell.Style} }; if cell.Formula != "" { cached := typedValue(cell.Type, value); metadata[ref] = CellMetadata{Formula: formulaValue(cell.Formula), Cached: &cached, Style: cell.Style} } }
 	}
 	if maxColumn == 0 { maxColumn = 1 }
 	columns := make([]Column, maxColumn)
