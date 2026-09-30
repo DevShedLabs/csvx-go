@@ -1,7 +1,46 @@
 // Package csvx provides a specification-first reader and writer for CSVX workbooks.
 package csvx
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/DevShedLabs/csvx-go/internal/schema"
+)
+
+// Style is a single style record. Its field shape is generated from csvx-spec's
+// styles.schema.json (see internal/schema/generated.go) rather than hand-typed, so it cannot
+// silently drift from the schema the way the previous hand-written map[string]map[string]any
+// representation did.
+//
+// This is a defined type over the generated struct, not a plain alias, solely so MarshalJSON
+// below can omit the generated AdditionalProperties bucket field until this engine implements
+// real additionalProperties round-tripping on both read and write (styles.json is not read back
+// in anywhere yet, so nothing currently depends on inheriting the generated UnmarshalJSON here).
+type Style schema.CSVXStylesStylesElem
+
+// MarshalJSON serializes a Style without the generated AdditionalProperties bucket field, which
+// encoding/json would otherwise emit as a literal `"AdditionalProperties": null` key — schema-
+// legal (styles.schema.json allows additional properties) but wrong output.
+func (s Style) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		ID           string                                `json:"id"`
+		NumberFormat *string                               `json:"numberFormat,omitempty"`
+		Font         schema.CSVXStylesStylesElemFont       `json:"font,omitempty"`
+		Fill         schema.CSVXStylesStylesElemFill       `json:"fill,omitempty"`
+		Border       schema.CSVXStylesStylesElemBorder     `json:"border,omitempty"`
+		Alignment    schema.CSVXStylesStylesElemAlignment  `json:"alignment,omitempty"`
+		Protection   schema.CSVXStylesStylesElemProtection `json:"protection,omitempty"`
+	}
+	return json.Marshal(wire{
+		ID:           s.Id,
+		NumberFormat: s.NumberFormat,
+		Font:         s.Font,
+		Fill:         s.Fill,
+		Border:       s.Border,
+		Alignment:    s.Alignment,
+		Protection:   s.Protection,
+	})
+}
 
 // Manifest identifies a CSVX package and its resources.
 type Manifest struct {
@@ -13,13 +52,13 @@ type Manifest struct {
 
 // Workbook is the canonical in-memory representation of a CSVX workbook.
 type Workbook struct {
-	ID          string           `json:"id"`
-	Version     string           `json:"version"`
-	Sheets      []*Sheet         `json:"sheets"`
-	Calculation Calculation      `json:"calculation,omitempty"`
-	Source      *SourceMetadata              `json:"source,omitempty"`
-	Styles      map[string]map[string]any     `json:"styles,omitempty"`
-	SourceBytes []byte                        `json:"-"`
+	ID          string          `json:"id"`
+	Version     string          `json:"version"`
+	Sheets      []*Sheet        `json:"sheets"`
+	Calculation Calculation     `json:"calculation,omitempty"`
+	Source      *SourceMetadata `json:"source,omitempty"`
+	Styles      []Style         `json:"styles,omitempty"`
+	SourceBytes []byte          `json:"-"`
 }
 
 // SourceMetadata describes an embedded external workbook preserved for interoperability.
@@ -90,7 +129,7 @@ type SheetEntry struct {
 type WorkbookDocument struct {
 	ID          string          `json:"id"`
 	Version     string          `json:"version"`
-	Sheets      []SheetEntry   `json:"sheets"`
+	Sheets      []SheetEntry    `json:"sheets"`
 	Calculation Calculation     `json:"calculation,omitempty"`
 	Source      *SourceMetadata `json:"source,omitempty"`
 	Styles      string          `json:"styles,omitempty"`

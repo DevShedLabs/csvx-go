@@ -15,11 +15,15 @@ coverage.out
 coverage.html
 *.prof
 
-# Temporary and generated files
+# Temporary files
 /tmp/
 /temp/
 *.ถmp
-*.generated.go
+
+# Note: *.generated.go is intentionally NOT ignored. internal/schema/generated.go (produced by
+# go-jsonschema from ../csvx-spec/schemas/*.json) is committed on purpose so `go build` works for
+# a fresh clone without requiring consumers to run codegen themselves. Regenerate and commit it
+# when the schemas change; see AGENTS.md.
 
 # Local CSVX packages and inspection output
 *.csvx
