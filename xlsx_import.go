@@ -282,8 +282,19 @@ func typedValue(kind, value string) Value {
 		return Value{Type: "boolean", Value: value == "TRUE" || value == "1"}
 	case "e":
 		return Value{Type: "error", Code: strings.TrimPrefix(value, "#")}
-	default:
+	case "s", "str", "inlineStr":
 		return Value{Type: "string", Value: value}
+	default:
+		// XLSX omits the cell type attribute for numeric cells, including numeric formula
+		// results — that must not default to "string" (schema-legal, semantically wrong; see
+		// csvx-spec/AGENTS.md). Mirrors the same heuristic xlsxValueType uses below.
+		if value == "" {
+			return Value{Type: "blank"}
+		}
+		if strings.Contains(value, ".") {
+			return Value{Type: "decimal", Value: value}
+		}
+		return Value{Type: "integer", Value: value}
 	}
 }
 func cellReference(column, row int) string { return columnID(column) + strconv.Itoa(row+1) }

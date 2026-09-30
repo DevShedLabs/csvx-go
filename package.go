@@ -109,7 +109,10 @@ func WritePackage(workbook *Workbook, output string) error {
 	writer := zip.NewWriter(file)
 	manifest := Manifest{Format: "csvx", Version: workbook.Version, Workbook: "workbook.json"}
 	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, Calculation: workbook.Calculation, Source: workbook.Source}
-	if len(workbook.Styles) > 0 { document.Styles = "styles.json"; manifest.Files = append(manifest.Files, "styles.json") }
+	if len(workbook.Styles) > 0 {
+		document.Styles = "styles.json"
+		manifest.Files = append(manifest.Files, "styles.json")
+	}
 	for _, sheet := range workbook.Sheets {
 		if sheet == nil || sheet.ID == "" || sheet.Name == "" {
 			return fmt.Errorf("sheet requires an ID and name")
@@ -157,11 +160,11 @@ func WritePackage(workbook *Workbook, output string) error {
 				metadataPath = "sheets/" + sheet.ID + ".meta.json"
 			}
 			metadata := struct {
-				ID string `json:"id"`
-				Name string `json:"name"`
-				Columns []Column `json:"columns,omitempty"`
-				RowHeights map[int]float64 `json:"rowHeights,omitempty"`
-				Cells map[string]CellMetadata `json:"cells,omitempty"`
+				ID         string                  `json:"id"`
+				Name       string                  `json:"name"`
+				Columns    []Column                `json:"columns,omitempty"`
+				RowHeights map[int]float64         `json:"rowHeights,omitempty"`
+				Cells      map[string]CellMetadata `json:"cells,omitempty"`
 			}{ID: sheet.ID, Name: sheet.Name, Columns: sheet.Columns, RowHeights: sheet.RowHeights, Cells: sheet.Cells}
 			resources[metadataPath], err = json.MarshalIndent(metadata, "", "  ")
 			if err != nil {
@@ -171,12 +174,16 @@ func WritePackage(workbook *Workbook, output string) error {
 	}
 	if len(workbook.Styles) > 0 {
 		resources["styles.json"], err = json.MarshalIndent(map[string]any{"styles": workbook.Styles}, "", "  ")
-		if err != nil { return fmt.Errorf("encode styles: %w", err) }
+		if err != nil {
+			return fmt.Errorf("encode styles: %w", err)
+		}
 	}
 	if workbook.Source != nil && len(workbook.SourceBytes) > 0 {
 		resources["source/original.xlsx"] = workbook.SourceBytes
 		resources["source/source.json"], err = json.MarshalIndent(workbook.Source, "", "  ")
-		if err != nil { return fmt.Errorf("encode source metadata: %w", err) }
+		if err != nil {
+			return fmt.Errorf("encode source metadata: %w", err)
+		}
 	}
 	for _, name := range manifest.Files {
 		entry, err := writer.Create(name)
@@ -268,7 +275,9 @@ func OpenDirectory(directory string) (*Workbook, error) {
 	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
 	if workbook.Source != nil {
 		workbook.SourceBytes, err = os.ReadFile(filepath.Join(directory, "source", "original.xlsx"))
-		if err != nil { return nil, fmt.Errorf("read embedded XLSX source: %w", err) }
+		if err != nil {
+			return nil, fmt.Errorf("read embedded XLSX source: %w", err)
+		}
 	}
 	for _, entry := range workbookDoc.Sheets {
 		sheet, err := loadDirectorySheet(directory, entry)
@@ -331,9 +340,26 @@ func Load(reader io.ReaderAt, size int64) (*Workbook, error) {
 	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
 	if workbook.Source != nil {
 		source, ok := entries["source/original.xlsx"]
-		if !ok { return nil, fmt.Errorf("missing embedded XLSX source") }
+		if !ok {
+			return nil, fmt.Errorf("missing embedded XLSX source")
+		}
 		workbook.SourceBytes, err = readEntry(source)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
+	}
+	stylesPath := workbookDoc.Styles
+	if stylesPath == "" {
+		stylesPath = "styles.json"
+	}
+	if _, ok := entries[stylesPath]; ok {
+		stylesDoc, err := decodeEntry[struct {
+			Styles []Style `json:"styles"`
+		}](entries, stylesPath)
+		if err != nil {
+			return nil, fmt.Errorf("decode styles resource %q: %w", stylesPath, err)
+		}
+		workbook.Styles = stylesDoc.Styles
 	}
 	for _, entry := range workbookDoc.Sheets {
 		sheet, err := loadSheet(entries, entry)
@@ -378,10 +404,10 @@ func loadSheet(entries map[string]*zip.File, entry SheetEntry) (*Sheet, error) {
 
 func applySheetMetadata(sheet *Sheet, metadataBody []byte, entry SheetEntry) (*Sheet, error) {
 	var resource struct {
-		ID      string                  `json:"id"`
-		Name    string                  `json:"name"`
+		ID         string                  `json:"id"`
+		Name       string                  `json:"name"`
 		Columns    []Column                `json:"columns"`
-		RowHeights map[int]float64          `json:"rowHeights"`
+		RowHeights map[int]float64         `json:"rowHeights"`
 		Cells      map[string]CellMetadata `json:"cells"`
 	}
 	if err := json.Unmarshal(metadataBody, &resource); err != nil {
