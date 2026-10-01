@@ -1,25 +1,26 @@
 # CSVX Go Engine
 
-The Go engine is the first implementation of the CSVX specification. It is intentionally
-specification-first: the engine must conform to CSVX behavior, but its internal architecture does
-not define the format.
+`csvx-go` is a Go library — the programmable interface for CSVX (load/edit/calculate/write). It is
+specification-first: it must conform to CSVX behavior, but its internal architecture does not
+define the format. **This repo is a library only** — its CLI was split into
+[`csvx-cli`](https://github.com/DevShedLabs/csvx-cli), which depends on this repo as an ordinary Go
+module. See `AGENTS.md` and `../csvx-spec/AGENTS.md` for why that split exists.
 
 ## Current scope
 
-The initial package provides the Phase 1 foundation:
-
-- CSVX ZIP package loading
-- Manifest and workbook loading
-- UTF-8 CSV sheet loading
-- Optional `.meta.json` sheet metadata
-- Typed metadata structures for columns, formulas, caches, styles, and validation
-- Sparse cell metadata addressed by A1 coordinates
+- CSVX ZIP package loading and writing (`Open`, `Load`, `WritePackage`)
+- Unpacked CSVX directory loading/packaging (`OpenDirectory`, `PackageDirectory`, `ExtractPackage`)
+- UTF-8 CSV sheet loading, RFC 4180-compatible
+- Optional `.meta.json` sheet metadata: formulas, cached values, per-cell styles, validation
+- `Style` generated from `../csvx-spec/schemas/styles.schema.json` (see `internal/schema/`), not
+  hand-typed — see `AGENTS.md` for why that matters
+- XLSX→CSVX import and unmodified-source recovery (`Convert`)
 - Duplicate and unsafe ZIP entry rejection
-- Package and extract CLI commands for developer workflows
+- Basic structural validation (`Validate`)
 
-Formula parsing, calculation, import/export, and full CLI operations will be added behind the
-same canonical workbook model. Package writing and extract/package round-trip support are now
-available for developer workflows.
+Not yet implemented: formula parsing/recalculation, general CSVX→XLSX export of arbitrary/edited
+content (only unmodified-source recovery exists today), full schema-conformance validation (that
+lives in `../csvx-spec/validator` for now). See `handoff.md` for current known limitations.
 
 ## Development rule
 
@@ -29,13 +30,9 @@ Each capability follows this sequence:
 Specify → create conformance fixtures → implement → run tests
 ```
 
-The specification repository is the authority:
+The specification repository is the authority: `../csvx-spec/`.
 
-```text
-../csvx-spec/
-```
-
-## Package
+## Usage
 
 ```go
 workbook, err := csvx.Open("report.csvx")
@@ -48,118 +45,46 @@ fmt.Println(workbook.Sheets[0].Records)
 CSV is the canonical sheet data layer. Metadata that CSV cannot represent is stored in the matching
 `.meta.json` sidecar.
 
-## Commands
+To exercise this library from the command line, use [`csvx-cli`](https://github.com/DevShedLabs/csvx-cli).
 
-Run commands from the repository root:
-
-### Format
+## Development
 
 ```bash
-gofmt -w .
+go build ./...                              # build
+go vet ./...                                # static analysis
+go test ./...                               # run all tests
+go test -race ./...                         # with the race detector
+go test -run TestLoadCSVBackedWorkbook ./... # a specific test
+gofmt -w .                                   # format before committing
+go mod tidy                                  # after changing imports — review the diff
 ```
 
-Formats all Go source files before committing.
+### Pre-push checks (local, since GitHub Actions minutes are limited)
 
-### Build
+`scripts/check.sh` runs the same checks CI would (`gofmt`, `go vet`, `go build`, `go test`). Run it
+any time:
 
 ```bash
-go build ./...
+./scripts/check.sh
 ```
 
-Builds every package in the module.
-
-To build the CLI once it is added:
+A git hook runs it automatically before every push, blocking the push if it fails. Enable it once
+per clone (this is local git config, not something that comes from cloning the repo):
 
 ```bash
-go build -o bin/csvx ./cmd/csvx
+git config core.hooksPath .githooks
 ```
 
-### Test
-
-```bash
-go test ./...
-```
-
-Runs all unit and package tests.
-
-Run tests with the race detector:
-
-```bash
-go test -race ./...
-```
-
-Run a specific test:
-
-```bash
-go test -run TestLoadCSVBackedWorkbook ./...
-```
-
-### Coverage
-
-```bash
-go test -cover ./...
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
-
-### Static analysis
-
-```bash
-go vet ./...
-```
-
-### Run the CLI
-
-Build the current CLI:
-
-```bash
-go build -o bin/csvx ./cmd/csvx
-```
-
-The currently supported commands are:
-
-```bash
-csvx --help
-csvx version
-csvx inspect report.csvx
-csvx inspect ../csvx-spec/examples/minimal.csvx
-csvx validate report.csvx
-csvx validate ../csvx-spec/examples/minimal.csvx
-csvx validate --json ../csvx-spec/examples/minimal.csvx
-csvx package ../csvx-spec/examples/minimal.csvx --output minimal.csvx
-csvx extract minimal.csvx --output minimal-extracted
-csvx xlsx-inspect ../csvx-spec/examples/example.xlsx
-csvx xlsx-inspect --json ../csvx-spec/examples/example.xlsx
-```
-
-Both `.csvx` ZIP files and unpacked CSVX package directories are accepted. The following commands
-are planned but not implemented yet:
-
-```bash
-csvx recalc report.csvx
-csvx convert report.xlsx report.csvx
-csvx convert report.csvx report.xlsx
-csvx convert report.csvx report.csv
-```
-
-### Dependency and module maintenance
-
-```bash
-go mod tidy
-go list -m all
-go version
-```
-
-`go mod tidy` should be run when imports change. Review its changes before committing.
+Skip in a genuine emergency with `git push --no-verify` — prefer fixing the failure instead. See
+`../csvx-spec/AGENTS.md` section 6 for why this exists: it's the interim stand-in for real CI.
 
 ## Development workflow
 
 1. Update the relevant specification in `../csvx-spec/`.
 2. Add or update a conformance fixture.
-3. Implement the behavior in the engine.
-4. Run `gofmt`, `go vet`, and `go test ./...`.
-5. Document any intentionally unsupported behavior.
+3. Implement the behavior in this library.
+4. Run `./scripts/check.sh` (or let the pre-push hook do it).
+5. Document any intentionally unsupported behavior in `handoff.md`.
 6. Confirm that CSV data and metadata sidecars remain round-trip safe.
 
 Do not treat engine behavior as a specification change without updating the specification repository.
-

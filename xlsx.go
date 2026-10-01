@@ -15,13 +15,13 @@ import (
 
 // XLSXInspection describes the portable features and package resources detected in an XLSX file.
 type XLSXInspection struct {
-	Format   string            `json:"format"`
-	Filename string            `json:"filename"`
-	SHA256   string            `json:"sha256"`
-	Sheets   []XLSXSheet       `json:"sheets"`
-	Features XLSXFeatureCounts `json:"features"`
-	Resources []string         `json:"resources"`
-	Warnings []XLSXDiagnostic  `json:"warnings"`
+	Format    string            `json:"format"`
+	Filename  string            `json:"filename"`
+	SHA256    string            `json:"sha256"`
+	Sheets    []XLSXSheet       `json:"sheets"`
+	Features  XLSXFeatureCounts `json:"features"`
+	Resources []string          `json:"resources"`
+	Warnings  []XLSXDiagnostic  `json:"warnings"`
 }
 
 // XLSXSheet describes one worksheet and its understood cell features.
@@ -97,8 +97,14 @@ func hashBytes(body []byte) string {
 
 func sortedResources(files map[string][]byte) []string {
 	resources := make([]string, 0, len(files))
-	for name := range files { resources = append(resources, name) }
-	for i := 1; i < len(resources); i++ { for j := i; j > 0 && resources[j] < resources[j-1]; j-- { resources[j], resources[j-1] = resources[j-1], resources[j] } }
+	for name := range files {
+		resources = append(resources, name)
+	}
+	for i := 1; i < len(resources); i++ {
+		for j := i; j > 0 && resources[j] < resources[j-1]; j-- {
+			resources[j], resources[j-1] = resources[j-1], resources[j]
+		}
+	}
 	return resources
 }
 
@@ -107,16 +113,27 @@ func countFeatures(files map[string][]byte) XLSXFeatureCounts {
 	for name, body := range files {
 		text := string(body)
 		switch {
-		case name == "xl/sharedStrings.xml": counts.SharedStrings = strings.Count(text, "<si")
-		case name == "xl/styles.xml": counts.Styles = strings.Count(text, "<xf") - 1; counts.NumberFormats = strings.Count(text, "<numFmt")
-		case strings.Contains(name, "drawing"): counts.Drawings++
-		case strings.Contains(name, "chart"): counts.Charts++
-		case strings.Contains(name, "media/"): counts.Images++
-		case strings.Contains(name, "comments"): counts.Comments++
-		case strings.Contains(name, "persons"): counts.Persons++
-		case name == "xl/vbaProject.bin": counts.Macros++
+		case name == "xl/sharedStrings.xml":
+			counts.SharedStrings = strings.Count(text, "<si")
+		case name == "xl/styles.xml":
+			counts.Styles = strings.Count(text, "<xf") - 1
+			counts.NumberFormats = strings.Count(text, "<numFmt")
+		case strings.Contains(name, "drawing"):
+			counts.Drawings++
+		case strings.Contains(name, "chart"):
+			counts.Charts++
+		case strings.Contains(name, "media/"):
+			counts.Images++
+		case strings.Contains(name, "comments"):
+			counts.Comments++
+		case strings.Contains(name, "persons"):
+			counts.Persons++
+		case name == "xl/vbaProject.bin":
+			counts.Macros++
 		}
-		if strings.HasSuffix(name, ".rels") { counts.Relationships++ }
+		if strings.HasSuffix(name, ".rels") {
+			counts.Relationships++
+		}
 	}
 	return counts
 }
@@ -124,12 +141,39 @@ func countFeatures(files map[string][]byte) XLSXFeatureCounts {
 func inspectSheets(files map[string][]byte, sharedStrings int) []XLSXSheet {
 	var sheets []XLSXSheet
 	for name, body := range files {
-		if !strings.HasPrefix(name, "xl/worksheets/sheet") || !strings.HasSuffix(name, ".xml") { continue }
+		if !strings.HasPrefix(name, "xl/worksheets/sheet") || !strings.HasSuffix(name, ".xml") {
+			continue
+		}
 		sheet := XLSXSheet{Path: name, SharedStrings: sharedStrings}
 		decoder := xml.NewDecoder(strings.NewReader(string(body)))
-		for { token, err := decoder.Token(); if err == io.EOF { break }; if err != nil { break }; start, ok := token.(xml.StartElement); if !ok { continue }
-			switch start.Name.Local { case "c": sheet.Cells++; for _, attr := range start.Attr { if attr.Name.Local == "s" { sheet.StyledCells++ }; if attr.Name.Local == "t" && attr.Value == "s" { sheet.SharedStrings++ } }
-			case "f": sheet.Formulas++; case "v": sheet.CachedValues++ }
+		for {
+			token, err := decoder.Token()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			start, ok := token.(xml.StartElement)
+			if !ok {
+				continue
+			}
+			switch start.Name.Local {
+			case "c":
+				sheet.Cells++
+				for _, attr := range start.Attr {
+					if attr.Name.Local == "s" {
+						sheet.StyledCells++
+					}
+					if attr.Name.Local == "t" && attr.Value == "s" {
+						sheet.SharedStrings++
+					}
+				}
+			case "f":
+				sheet.Formulas++
+			case "v":
+				sheet.CachedValues++
+			}
 		}
 		sheets = append(sheets, sheet)
 	}
@@ -137,7 +181,13 @@ func inspectSheets(files map[string][]byte, sharedStrings int) []XLSXSheet {
 }
 
 func addFeatureWarnings(inspection *XLSXInspection) {
-	if inspection.Features.Drawings > 0 { inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "drawings", Message: "drawing resources require source preservation"}) }
-	if inspection.Features.Comments > 0 || inspection.Features.Persons > 0 { inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "comments", Message: "comment/person resources require source preservation"}) }
-	if inspection.Features.Macros > 0 { inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "macros", Message: "macros are never executed and require explicit preservation policy"}) }
+	if inspection.Features.Drawings > 0 {
+		inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "drawings", Message: "drawing resources require source preservation"})
+	}
+	if inspection.Features.Comments > 0 || inspection.Features.Persons > 0 {
+		inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "comments", Message: "comment/person resources require source preservation"})
+	}
+	if inspection.Features.Macros > 0 {
+		inspection.Warnings = append(inspection.Warnings, XLSXDiagnostic{Severity: "warning", Feature: "macros", Message: "macros are never executed and require explicit preservation policy"})
+	}
 }

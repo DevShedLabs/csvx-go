@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enabled once per clone with: git config core.hooksPath .githooks
+# Skip in a genuine emergency with: git push --no-verify (prefer fixing the failure instead).
+exec "$(dirname "$0")/../scripts/check.sh"
