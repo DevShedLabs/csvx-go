@@ -14,15 +14,24 @@ import (
 // cell's own Type override wins over its column's); pass "" when nothing declares a type at all.
 //
 // When nothing declares a type (true for any hand-authored or freshly-edited CSVX, as opposed to
-// an exhaustively cell-annotated XLSX import), this falls back to the same narrow, well-established
+// an exhaustively cell-annotated XLSX import), numberFormat (the cell's resolved style numberFormat,
+// if any) is tried first, per spec/08-styles.md's symmetric parsing allowance — "$7.00" against a
+// `"$"#,##0.00` numberFormat resolves to decimal "7.00" rather than falling through to string just
+// because it looks like currency text (see ParseFormattedLiteral for the documented, bounded
+// subset this covers). Failing that, this falls back to the same narrow, well-established
 // literal-shape inference every CSV-consuming spreadsheet tool uses (blank/boolean/integer/decimal
 // by shape, otherwise string) rather than defaulting everything untyped to "string" and silently
 // breaking formula arithmetic over it. A declared type (including an explicit "string") always
-// wins and is never second-guessed. Mirrors csvx-ts's resolveCellValue — see that implementation
-// for the TypeScript engine's identical contract.
-func ResolveCellValue(raw string, declaredType string) Value {
+// wins and is never second-guessed, and never consults numberFormat. Mirrors csvx-ts's
+// resolveCellValue — see that implementation for the TypeScript engine's identical contract.
+func ResolveCellValue(raw string, declaredType string, numberFormat string) Value {
 	if raw == "" {
 		return Value{Type: "blank"}
+	}
+	if declaredType == "" {
+		if formatted, ok := ParseFormattedLiteral(raw, numberFormat); ok {
+			return formatted
+		}
 	}
 	if declaredType != "" {
 		switch declaredType {
