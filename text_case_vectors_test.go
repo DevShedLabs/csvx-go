@@ -20,6 +20,7 @@ func TestTextCaseVectors(t *testing.T) {
 				Text         string       `json:"text"`
 				DeclaredType string       `json:"declaredType"`
 				Formula      string       `json:"formula"`
+				Header       bool         `json:"header"`
 			} `json:"input"`
 			Expected string `json:"expected"`
 		} `json:"cases"`
@@ -29,7 +30,7 @@ func TestTextCaseVectors(t *testing.T) {
 	}
 	for _, c := range vector.Cases {
 		in := c.Input
-		if got := ChangeCase(in.Text, in.Mode, in.DeclaredType, in.Formula); got != c.Expected {
+		if got := ChangeCase(in.Text, in.Mode, in.DeclaredType, in.Formula, in.Header); got != c.Expected {
 			t.Errorf("ChangeCase(%+v) = %q; want %q", in, got, c.Expected)
 		}
 	}

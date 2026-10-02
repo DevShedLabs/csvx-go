@@ -15,8 +15,11 @@ const (
 )
 
 // IsCaseEligible reports whether a cell's text may be case-converted: no formula, and it resolves
-// to a string. declaredType is the cell's resolved type ("" when nothing declares one).
-func IsCaseEligible(text, declaredType, formula string) bool {
+// to a string; a header cell (header true) is always a string. declaredType is the cell's resolved type ("" when nothing declares one).
+func IsCaseEligible(text, declaredType, formula string, header bool) bool {
+	if header {
+		return text != "" // a header is a column name: always a string
+	}
 	if formula != "" {
 		return false
 	}
@@ -29,8 +32,8 @@ func IsCaseEligible(text, declaredType, formula string) bool {
 // ChangeCase returns the converted text, or text unchanged when the cell is not eligible. Mapping
 // is per code point; a code point whose mapping is not exactly one code point is left unchanged.
 // Mirrors csvx-ts's changeCase.
-func ChangeCase(text string, mode TextCaseMode, declaredType, formula string) string {
-	if !IsCaseEligible(text, declaredType, formula) {
+func ChangeCase(text string, mode TextCaseMode, declaredType, formula string, header bool) string {
+	if !IsCaseEligible(text, declaredType, formula, header) {
 		return text
 	}
 	runes := []rune(text)
