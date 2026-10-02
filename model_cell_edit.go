@@ -61,41 +61,20 @@ func ResolveCellValue(raw string, declaredType string, numberFormat string) Valu
 			return Value{Type: "string", Value: raw}
 		}
 	}
-	trimmed := strings.TrimSpace(raw)
-	if strings.EqualFold(trimmed, "true") || strings.EqualFold(trimmed, "false") {
-		return Value{Type: "boolean", Value: strings.EqualFold(trimmed, "true")}
-	}
-	if number, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
-		return Value{Type: "integer", Value: number}
-	}
-	if isPlainDecimalLiteral(trimmed) {
-		return Value{Type: "decimal", Value: trimmed}
+	// Untyped literal rules (spec/04-data-types.md, "Literal forms"): exact text forms only.
+	switch literalType(raw) {
+	case "boolean":
+		return Value{Type: "boolean", Value: raw == "true"}
+	case "integer":
+		if number, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			return Value{Type: "integer", Value: number}
+		}
+		// Beyond int64: keep the exact text rather than lose digits.
+		return Value{Type: "string", Value: raw}
+	case "decimal":
+		return Value{Type: "decimal", Value: raw}
 	}
 	return Value{Type: "string", Value: raw}
-}
-
-// isPlainDecimalLiteral matches the same shape csvx-ts's resolveCellValue requires for decimal
-// inference: an optional sign, one or more digits, a literal ".", and one or more digits — not
-// Go's broader ParseFloat grammar (which also accepts exponents, "Inf", "NaN", etc.), since those
-// aren't what a person typing "19.95" into a cell means.
-func isPlainDecimalLiteral(text string) bool {
-	rest := text
-	if len(rest) > 0 && (rest[0] == '+' || rest[0] == '-') {
-		rest = rest[1:]
-	}
-	dot := strings.IndexByte(rest, '.')
-	if dot <= 0 || dot == len(rest)-1 {
-		return false
-	}
-	for i, r := range rest {
-		if i == dot {
-			continue
-		}
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // NextCellMetadata computes the next cell metadata after an edit overwrites a cell's content, per
