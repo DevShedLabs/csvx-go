@@ -11,7 +11,8 @@ import (
 )
 
 type xlsxWorkbook struct {
-	Sheets []struct {
+	DefinedNames []xlsxDefinedName `xml:"definedNames>definedName"`
+	Sheets       []struct {
 		Name string `xml:"name,attr"`
 		RID  string `xml:"id,attr"`
 	} `xml:"sheets>sheet"`
@@ -40,6 +41,7 @@ type xlsxWorksheet struct {
 		CustomHeight string     `xml:"customHeight,attr"`
 		Cells        []xlsxCell `xml:"c"`
 	} `xml:"sheetData>row"`
+	xlsxPrint
 }
 type xlsxCell struct {
 	Ref     string `xml:"r,attr"`
@@ -69,12 +71,17 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 	if err != nil {
 		return nil, err
 	}
+	var book xlsxWorkbook
+	if err := xml.Unmarshal(files["xl/workbook.xml"], &book); err != nil {
+		return nil, fmt.Errorf("decode workbook: %w", err)
+	}
 	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0", Styles: exportStyles(styles)}
 	for index, sheetPath := range paths {
 		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles)
 		if err != nil {
 			return nil, fmt.Errorf("import sheet %q: %w", names[index], err)
 		}
+		applyXLSXPrintNames(sheet, index, book.DefinedNames)
 		workbook.Sheets = append(workbook.Sheets, sheet)
 	}
 	if len(workbook.Sheets) == 0 {
@@ -224,7 +231,7 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 		}
 		records = append(records, record)
 	}
-	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, RowHeights: rowHeights, Cells: metadata}, nil
+	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, RowHeights: rowHeights, Print: printFromWorksheet(worksheet.xlsxPrint), Cells: metadata}, nil
 }
 
 func xlsxCellValue(cell xlsxCell, shared []string) string {

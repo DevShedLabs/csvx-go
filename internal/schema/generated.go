@@ -166,6 +166,9 @@ type CSVXSheetMetadata struct {
 	// Name corresponds to the JSON schema field "name".
 	Name *string `json:"name,omitempty,omitzero" yaml:"name,omitempty" mapstructure:"name,omitempty"`
 
+	// Print corresponds to the JSON schema field "print".
+	Print *Print `json:"print,omitempty,omitzero" yaml:"print,omitempty" mapstructure:"print,omitempty"`
+
 	// Row height by 1-based row number, in points (XLSX's own unit; its default row
 	// height is 15pt) — see spec/03-sheets.md.
 	RowHeights CSVXSheetMetadataRowHeights `json:"rowHeights,omitempty,omitzero" yaml:"rowHeights,omitempty" mapstructure:"rowHeights,omitempty"`
@@ -590,6 +593,254 @@ func (j *Id) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("field %s pattern match: must match %s", "", `^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 	}
 	*j = Id(plain)
+	return nil
+}
+
+// Print and pagination settings — see spec/03-sheets.md (Print settings) and
+// spec/14-xlsx-interoperability.md.
+type Print struct {
+	// Area corresponds to the JSON schema field "area".
+	Area *string `json:"area,omitempty,omitzero" yaml:"area,omitempty" mapstructure:"area,omitempty"`
+
+	// CenterHorizontally corresponds to the JSON schema field "centerHorizontally".
+	CenterHorizontally *bool `json:"centerHorizontally,omitempty,omitzero" yaml:"centerHorizontally,omitempty" mapstructure:"centerHorizontally,omitempty"`
+
+	// ColumnBreaks corresponds to the JSON schema field "columnBreaks".
+	ColumnBreaks []int `json:"columnBreaks,omitempty,omitzero" yaml:"columnBreaks,omitempty" mapstructure:"columnBreaks,omitempty"`
+
+	// FitToHeight corresponds to the JSON schema field "fitToHeight".
+	FitToHeight *int `json:"fitToHeight,omitempty,omitzero" yaml:"fitToHeight,omitempty" mapstructure:"fitToHeight,omitempty"`
+
+	// FitToWidth corresponds to the JSON schema field "fitToWidth".
+	FitToWidth *int `json:"fitToWidth,omitempty,omitzero" yaml:"fitToWidth,omitempty" mapstructure:"fitToWidth,omitempty"`
+
+	// Gridlines corresponds to the JSON schema field "gridlines".
+	Gridlines *bool `json:"gridlines,omitempty,omitzero" yaml:"gridlines,omitempty" mapstructure:"gridlines,omitempty"`
+
+	// Inches, the unit XLSX uses.
+	Margins *PrintMargins `json:"margins,omitempty,omitzero" yaml:"margins,omitempty" mapstructure:"margins,omitempty"`
+
+	// Orientation corresponds to the JSON schema field "orientation".
+	Orientation *PrintOrientation `json:"orientation,omitempty,omitzero" yaml:"orientation,omitempty" mapstructure:"orientation,omitempty"`
+
+	// PageOrder corresponds to the JSON schema field "pageOrder".
+	PageOrder *PrintPageOrder `json:"pageOrder,omitempty,omitzero" yaml:"pageOrder,omitempty" mapstructure:"pageOrder,omitempty"`
+
+	// PaperSize corresponds to the JSON schema field "paperSize".
+	PaperSize *PrintPaperSize `json:"paperSize,omitempty,omitzero" yaml:"paperSize,omitempty" mapstructure:"paperSize,omitempty"`
+
+	// RepeatColumns corresponds to the JSON schema field "repeatColumns".
+	RepeatColumns *string `json:"repeatColumns,omitempty,omitzero" yaml:"repeatColumns,omitempty" mapstructure:"repeatColumns,omitempty"`
+
+	// RepeatRows corresponds to the JSON schema field "repeatRows".
+	RepeatRows *string `json:"repeatRows,omitempty,omitzero" yaml:"repeatRows,omitempty" mapstructure:"repeatRows,omitempty"`
+
+	// RowBreaks corresponds to the JSON schema field "rowBreaks".
+	RowBreaks []int `json:"rowBreaks,omitempty,omitzero" yaml:"rowBreaks,omitempty" mapstructure:"rowBreaks,omitempty"`
+
+	// Scale corresponds to the JSON schema field "scale".
+	Scale *float64 `json:"scale,omitempty,omitzero" yaml:"scale,omitempty" mapstructure:"scale,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+// Inches, the unit XLSX uses.
+type PrintMargins struct {
+	// Bottom corresponds to the JSON schema field "bottom".
+	Bottom *float64 `json:"bottom,omitempty,omitzero" yaml:"bottom,omitempty" mapstructure:"bottom,omitempty"`
+
+	// Left corresponds to the JSON schema field "left".
+	Left *float64 `json:"left,omitempty,omitzero" yaml:"left,omitempty" mapstructure:"left,omitempty"`
+
+	// Right corresponds to the JSON schema field "right".
+	Right *float64 `json:"right,omitempty,omitzero" yaml:"right,omitempty" mapstructure:"right,omitempty"`
+
+	// Top corresponds to the JSON schema field "top".
+	Top *float64 `json:"top,omitempty,omitzero" yaml:"top,omitempty" mapstructure:"top,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PrintMargins) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	type Plain PrintMargins
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if plain.Bottom != nil && 0 > *plain.Bottom {
+		return fmt.Errorf("field %s: must be >= %v", "bottom", 0)
+	}
+	if plain.Left != nil && 0 > *plain.Left {
+		return fmt.Errorf("field %s: must be >= %v", "left", 0)
+	}
+	if plain.Right != nil && 0 > *plain.Right {
+		return fmt.Errorf("field %s: must be >= %v", "right", 0)
+	}
+	if plain.Top != nil && 0 > *plain.Top {
+		return fmt.Errorf("field %s: must be >= %v", "top", 0)
+	}
+	st := reflect.TypeOf(Plain{})
+	for i := range st.NumField() {
+		delete(raw, st.Field(i).Name)
+		delete(raw, strings.Split(st.Field(i).Tag.Get("json"), ",")[0])
+	}
+	if err := mapstructure.Decode(raw, &plain.AdditionalProperties); err != nil {
+		return err
+	}
+	*j = PrintMargins(plain)
+	return nil
+}
+
+type PrintOrientation string
+
+const PrintOrientationLandscape PrintOrientation = "landscape"
+const PrintOrientationPortrait PrintOrientation = "portrait"
+
+var enumValues_PrintOrientation = []interface{}{
+	"portrait",
+	"landscape",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PrintOrientation) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_PrintOrientation {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_PrintOrientation, v)
+	}
+	*j = PrintOrientation(v)
+	return nil
+}
+
+type PrintPageOrder string
+
+const PrintPageOrderDownThenOver PrintPageOrder = "downThenOver"
+const PrintPageOrderOverThenDown PrintPageOrder = "overThenDown"
+
+var enumValues_PrintPageOrder = []interface{}{
+	"downThenOver",
+	"overThenDown",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PrintPageOrder) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_PrintPageOrder {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_PrintPageOrder, v)
+	}
+	*j = PrintPageOrder(v)
+	return nil
+}
+
+type PrintPaperSize string
+
+const PrintPaperSizeA3 PrintPaperSize = "a3"
+const PrintPaperSizeA4 PrintPaperSize = "a4"
+const PrintPaperSizeA5 PrintPaperSize = "a5"
+const PrintPaperSizeLegal PrintPaperSize = "legal"
+const PrintPaperSizeLetter PrintPaperSize = "letter"
+const PrintPaperSizeTabloid PrintPaperSize = "tabloid"
+
+var enumValues_PrintPaperSize = []interface{}{
+	"letter",
+	"legal",
+	"tabloid",
+	"a3",
+	"a4",
+	"a5",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *PrintPaperSize) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_PrintPaperSize {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_PrintPaperSize, v)
+	}
+	*j = PrintPaperSize(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Print) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	type Plain Print
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if plain.Area != nil {
+		if matched, _ := regexp.MatchString(`^[A-Z]+[1-9][0-9]*:[A-Z]+[1-9][0-9]*$`, string(*plain.Area)); !matched {
+			return fmt.Errorf("field %s pattern match: must match %s", "Area", `^[A-Z]+[1-9][0-9]*:[A-Z]+[1-9][0-9]*$`)
+		}
+	}
+	if plain.FitToHeight != nil && 0 > *plain.FitToHeight {
+		return fmt.Errorf("field %s: must be >= %v", "fitToHeight", 0)
+	}
+	if plain.FitToWidth != nil && 0 > *plain.FitToWidth {
+		return fmt.Errorf("field %s: must be >= %v", "fitToWidth", 0)
+	}
+	if plain.RepeatColumns != nil {
+		if matched, _ := regexp.MatchString(`^[A-Z]+:[A-Z]+$`, string(*plain.RepeatColumns)); !matched {
+			return fmt.Errorf("field %s pattern match: must match %s", "RepeatColumns", `^[A-Z]+:[A-Z]+$`)
+		}
+	}
+	if plain.RepeatRows != nil {
+		if matched, _ := regexp.MatchString(`^[1-9][0-9]*:[1-9][0-9]*$`, string(*plain.RepeatRows)); !matched {
+			return fmt.Errorf("field %s pattern match: must match %s", "RepeatRows", `^[1-9][0-9]*:[1-9][0-9]*$`)
+		}
+	}
+	if plain.Scale != nil && 400 < *plain.Scale {
+		return fmt.Errorf("field %s: must be <= %v", "scale", 400)
+	}
+	if plain.Scale != nil && 10 > *plain.Scale {
+		return fmt.Errorf("field %s: must be >= %v", "scale", 10)
+	}
+	st := reflect.TypeOf(Plain{})
+	for i := range st.NumField() {
+		delete(raw, st.Field(i).Name)
+		delete(raw, strings.Split(st.Field(i).Tag.Get("json"), ",")[0])
+	}
+	if err := mapstructure.Decode(raw, &plain.AdditionalProperties); err != nil {
+		return err
+	}
+	*j = Print(plain)
 	return nil
 }
 

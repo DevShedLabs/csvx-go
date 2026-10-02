@@ -127,6 +127,7 @@ type Sheet struct {
 	Columns      []Column                   `json:"columns"`
 	Records      [][]string                 `json:"records"`
 	RowHeights   map[int]float64            `json:"rowHeights,omitempty"`
+	Print        *PrintSettings             `json:"print,omitempty"`
 	Cells        map[string]CellMetadata    `json:"cells,omitempty"`
 	Extra        map[string]json.RawMessage `json:"-"`
 }
