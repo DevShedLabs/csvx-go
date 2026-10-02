@@ -217,14 +217,19 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 	if maxColumn == 0 {
 		maxColumn = 1
 	}
+	// Worksheet row N is CSVX row N (spec/03-sheets.md, 14.7): row 1 is the CSV header row, whose cell
+	// text names the columns, and rows 2 and later are the data records. An empty header cell can't
+	// be a CSV header (it must be non-empty), so it is named after its column letter.
 	columns := make([]Column, maxColumn)
 	for column := range columns {
-		columns[column] = Column{ID: columnID(column), Name: columnID(column), Width: columnWidths[column]}
+		name := values[cellReference(column, 0)]
+		if name == "" {
+			name = columnID(column)
+		}
+		columns[column] = Column{ID: columnID(column), Name: name, Width: columnWidths[column]}
 	}
-	// XLSX row 1 is a real worksheet row. CSVX requires a header row, so use
-	// generated stable headers and preserve all worksheet rows as records.
 	records := make([][]string, 0, maxRow)
-	for row := 0; row < maxRow; row++ {
+	for row := 1; row < maxRow; row++ {
 		record := make([]string, maxColumn)
 		for column := range record {
 			record[column] = values[cellReference(column, row)]
