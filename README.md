@@ -6,6 +6,13 @@ define the format. **This repo is a library only** — its CLI was split into
 [`csvx-cli`](https://github.com/DevShedLabs/csvx-cli), which depends on this repo as an ordinary Go
 module. See `AGENTS.md` and `../csvx-spec/AGENTS.md` for why that split exists.
 
+
+## Internal 
+> This project uses the CSVX Spec and Go engine
+
+- [CSVX Spec](https://github.com/DevShedLabs/csvx-spec)
+
+
 ## Current scope
 
 - CSVX ZIP package loading and writing (`Open`, `Load`, `WritePackage`)
