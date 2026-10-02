@@ -10,6 +10,56 @@ import "regexp"
 import "strings"
 import "unicode/utf8"
 
+type BorderEdge struct {
+	// Color corresponds to the JSON schema field "color".
+	Color *string `json:"color,omitempty,omitzero" yaml:"color,omitempty" mapstructure:"color,omitempty"`
+
+	// Style corresponds to the JSON schema field "style".
+	Style *BorderLineStyle `json:"style,omitempty,omitzero" yaml:"style,omitempty" mapstructure:"style,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+type BorderLineStyle string
+
+const BorderLineStyleDashed BorderLineStyle = "dashed"
+const BorderLineStyleDotted BorderLineStyle = "dotted"
+const BorderLineStyleDouble BorderLineStyle = "double"
+const BorderLineStyleMedium BorderLineStyle = "medium"
+const BorderLineStyleNone BorderLineStyle = "none"
+const BorderLineStyleThick BorderLineStyle = "thick"
+const BorderLineStyleThin BorderLineStyle = "thin"
+
+var enumValues_BorderLineStyle = []interface{}{
+	"none",
+	"thin",
+	"medium",
+	"thick",
+	"dashed",
+	"dotted",
+	"double",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *BorderLineStyle) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_BorderLineStyle {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_BorderLineStyle, v)
+	}
+	*j = BorderLineStyle(v)
+	return nil
+}
+
 type CSVXFormulaCell struct {
 	// Cached corresponds to the JSON schema field "cached".
 	Cached *Value `json:"cached,omitempty,omitzero" yaml:"cached,omitempty" mapstructure:"cached,omitempty"`
@@ -116,7 +166,8 @@ type CSVXSheetMetadata struct {
 	// Name corresponds to the JSON schema field "name".
 	Name *string `json:"name,omitempty,omitzero" yaml:"name,omitempty" mapstructure:"name,omitempty"`
 
-	// RowHeights corresponds to the JSON schema field "rowHeights".
+	// Row height by 1-based row number, in points (XLSX's own unit; its default row
+	// height is 15pt) — see spec/03-sheets.md.
 	RowHeights CSVXSheetMetadataRowHeights `json:"rowHeights,omitempty,omitzero" yaml:"rowHeights,omitempty" mapstructure:"rowHeights,omitempty"`
 
 	AdditionalProperties interface{} `mapstructure:",remain"`
@@ -124,6 +175,8 @@ type CSVXSheetMetadata struct {
 
 type CSVXSheetMetadataCells map[string]Cell
 
+// Row height by 1-based row number, in points (XLSX's own unit; its default row
+// height is 15pt) — see spec/03-sheets.md.
 type CSVXSheetMetadataRowHeights map[string]float64
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -167,7 +220,7 @@ type CSVXStylesStylesElem struct {
 	Alignment CSVXStylesStylesElemAlignment `json:"alignment,omitempty,omitzero" yaml:"alignment,omitempty" mapstructure:"alignment,omitempty"`
 
 	// Border corresponds to the JSON schema field "border".
-	Border CSVXStylesStylesElemBorder `json:"border,omitempty,omitzero" yaml:"border,omitempty" mapstructure:"border,omitempty"`
+	Border *CSVXStylesStylesElemBorder `json:"border,omitempty,omitzero" yaml:"border,omitempty" mapstructure:"border,omitempty"`
 
 	// Fill corresponds to the JSON schema field "fill".
 	Fill CSVXStylesStylesElemFill `json:"fill,omitempty,omitzero" yaml:"fill,omitempty" mapstructure:"fill,omitempty"`
@@ -189,7 +242,27 @@ type CSVXStylesStylesElem struct {
 
 type CSVXStylesStylesElemAlignment map[string]interface{}
 
-type CSVXStylesStylesElemBorder map[string]interface{}
+type CSVXStylesStylesElemBorder struct {
+	// Bottom corresponds to the JSON schema field "bottom".
+	Bottom *BorderEdge `json:"bottom,omitempty,omitzero" yaml:"bottom,omitempty" mapstructure:"bottom,omitempty"`
+
+	// Color corresponds to the JSON schema field "color".
+	Color *string `json:"color,omitempty,omitzero" yaml:"color,omitempty" mapstructure:"color,omitempty"`
+
+	// Left corresponds to the JSON schema field "left".
+	Left *BorderEdge `json:"left,omitempty,omitzero" yaml:"left,omitempty" mapstructure:"left,omitempty"`
+
+	// Right corresponds to the JSON schema field "right".
+	Right *BorderEdge `json:"right,omitempty,omitzero" yaml:"right,omitempty" mapstructure:"right,omitempty"`
+
+	// Style corresponds to the JSON schema field "style".
+	Style *BorderLineStyle `json:"style,omitempty,omitzero" yaml:"style,omitempty" mapstructure:"style,omitempty"`
+
+	// Top corresponds to the JSON schema field "top".
+	Top *BorderEdge `json:"top,omitempty,omitzero" yaml:"top,omitempty" mapstructure:"top,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
 
 type CSVXStylesStylesElemFill map[string]interface{}
 
@@ -464,7 +537,9 @@ type Column struct {
 	// Type corresponds to the JSON schema field "type".
 	Type *ScalarType `json:"type,omitempty,omitzero" yaml:"type,omitempty" mapstructure:"type,omitempty"`
 
-	// Width corresponds to the JSON schema field "width".
+	// XLSX character-width units (the number of '0' glyphs, in the workbook's default
+	// font, that fit the column, plus padding) — see spec/03-sheets.md for the
+	// canonical pixel conversion formula every engine must use.
 	Width *float64 `json:"width,omitempty,omitzero" yaml:"width,omitempty" mapstructure:"width,omitempty"`
 
 	AdditionalProperties interface{} `mapstructure:",remain"`

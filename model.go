@@ -27,7 +27,7 @@ func (s Style) MarshalJSON() ([]byte, error) {
 		NumberFormat *string                               `json:"numberFormat,omitempty"`
 		Font         schema.CSVXStylesStylesElemFont       `json:"font,omitempty"`
 		Fill         schema.CSVXStylesStylesElemFill       `json:"fill,omitempty"`
-		Border       schema.CSVXStylesStylesElemBorder     `json:"border,omitempty"`
+		Border       *borderWire                           `json:"border,omitempty"`
 		Alignment    schema.CSVXStylesStylesElemAlignment  `json:"alignment,omitempty"`
 		Protection   schema.CSVXStylesStylesElemProtection `json:"protection,omitempty"`
 	}
@@ -36,10 +36,49 @@ func (s Style) MarshalJSON() ([]byte, error) {
 		NumberFormat: s.NumberFormat,
 		Font:         s.Font,
 		Fill:         s.Fill,
-		Border:       s.Border,
+		Border:       borderToWire(s.Border),
 		Alignment:    s.Alignment,
 		Protection:   s.Protection,
 	})
+}
+
+// borderWire / borderEdgeWire mirror the generated border types minus their AdditionalProperties
+// bucket, for the same reason Style.MarshalJSON drops its own.
+type borderWire struct {
+	Style  *schema.BorderLineStyle `json:"style,omitempty"`
+	Color  *string                 `json:"color,omitempty"`
+	Top    *borderEdgeWire         `json:"top,omitempty"`
+	Right  *borderEdgeWire         `json:"right,omitempty"`
+	Bottom *borderEdgeWire         `json:"bottom,omitempty"`
+	Left   *borderEdgeWire         `json:"left,omitempty"`
+}
+
+type borderEdgeWire struct {
+	Style *schema.BorderLineStyle `json:"style,omitempty"`
+	Color *string                 `json:"color,omitempty"`
+}
+
+func edgeToWire(edge *schema.BorderEdge) *borderEdgeWire {
+	if edge == nil {
+		return nil
+	}
+	return &borderEdgeWire{Style: edge.Style, Color: edge.Color}
+}
+
+// borderToWire returns nil for an entirely empty border so it is omitted from styles.json.
+func borderToWire(border *schema.CSVXStylesStylesElemBorder) *borderWire {
+	if border == nil {
+		return nil
+	}
+	wire := borderWire{
+		Style: border.Style, Color: border.Color,
+		Top: edgeToWire(border.Top), Right: edgeToWire(border.Right),
+		Bottom: edgeToWire(border.Bottom), Left: edgeToWire(border.Left),
+	}
+	if wire == (borderWire{}) {
+		return nil
+	}
+	return &wire
 }
 
 // Manifest identifies a CSVX package and its resources.

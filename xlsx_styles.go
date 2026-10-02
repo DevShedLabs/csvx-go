@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/DevShedLabs/csvx-go/internal/schema"
 )
 
 type xlsxStyles struct {
@@ -21,6 +23,9 @@ type xlsxStyles struct {
 	Fills struct {
 		Items []xlsxFill `xml:"fill"`
 	} `xml:"fills"`
+	Borders struct {
+		Items []xlsxBorder `xml:"border"`
+	} `xml:"borders"`
 	CellXfs struct {
 		Items []xlsxXF `xml:"xf"`
 	} `xml:"cellXfs"`
@@ -29,6 +34,7 @@ type xlsxXF struct {
 	NumFmtID          string         `xml:"numFmtId,attr"`
 	FontID            string         `xml:"fontId,attr"`
 	FillID            string         `xml:"fillId,attr"`
+	BorderID          string         `xml:"borderId,attr"`
 	ApplyNumberFormat string         `xml:"applyNumberFormat,attr"`
 	Alignment         *xlsxAlignment `xml:"alignment"`
 }
@@ -55,6 +61,16 @@ type xlsxFill struct {
 		Type       string      `xml:"patternType,attr"`
 		Foreground []xlsxColor `xml:"fgColor"`
 	} `xml:"patternFill"`
+}
+type xlsxBorder struct {
+	Left   xlsxBorderEdge `xml:"left"`
+	Right  xlsxBorderEdge `xml:"right"`
+	Top    xlsxBorderEdge `xml:"top"`
+	Bottom xlsxBorderEdge `xml:"bottom"`
+}
+type xlsxBorderEdge struct {
+	Style string      `xml:"style,attr"`
+	Color []xlsxColor `xml:"color"`
 }
 type xlsxColor struct {
 	RGB     string `xml:"rgb,attr"`
@@ -87,6 +103,9 @@ func parseXLSXStyles(body []byte) (map[string]map[string]any, error) {
 		}
 		if fill, ok := indexedFill(resource.Fills.Items, xf.FillID); ok {
 			style["fill"] = fill
+		}
+		if border, ok := indexedBorder(resource.Borders.Items, xf.BorderID); ok {
+			style["border"] = border
 		}
 		if xf.Alignment != nil {
 			style["alignment"] = map[string]any{"horizontal": xf.Alignment.Horizontal, "vertical": xf.Alignment.Vertical, "wrapText": xf.Alignment.WrapText == "1" || strings.EqualFold(xf.Alignment.WrapText, "true"), "textRotation": xf.Alignment.TextRotation, "indent": xf.Alignment.Indent}
@@ -128,6 +147,9 @@ func styleFromMap(id string, source map[string]any) Style {
 	if value, ok := source["fill"].(map[string]any); ok {
 		style.Fill = value
 	}
+	if value, ok := source["border"].(schema.CSVXStylesStylesElemBorder); ok {
+		style.Border = &value
+	}
 	if value, ok := source["alignment"].(map[string]any); ok {
 		style.Alignment = value
 	}
@@ -166,6 +188,53 @@ func indexedFont(fonts []xlsxFont, id string) (map[string]any, bool) {
 		font["color"] = color
 	}
 	return font, true
+}
+
+// xlsxBorderStyles maps XLSX border line names onto the spec's border line styles
+// (spec/08-styles.md). Names with no exact counterpart map to the nearest one; the original name is
+// then kept on the edge as `xlsxStyle` so nothing is silently lost.
+var xlsxBorderStyles = map[string]schema.BorderLineStyle{
+	"thin": schema.BorderLineStyleThin, "hair": schema.BorderLineStyleThin,
+	"medium": schema.BorderLineStyleMedium, "thick": schema.BorderLineStyleThick,
+	"dashed": schema.BorderLineStyleDashed, "mediumDashed": schema.BorderLineStyleDashed,
+	"dashDot": schema.BorderLineStyleDashed, "mediumDashDot": schema.BorderLineStyleDashed,
+	"dashDotDot": schema.BorderLineStyleDashed, "mediumDashDotDot": schema.BorderLineStyleDashed,
+	"slantDashDot": schema.BorderLineStyleDashed,
+	"dotted":       schema.BorderLineStyleDotted, "double": schema.BorderLineStyleDouble,
+}
+
+func borderEdge(edge xlsxBorderEdge) *schema.BorderEdge {
+	if edge.Style == "" || edge.Style == "none" {
+		return nil
+	}
+	style, ok := xlsxBorderStyles[edge.Style]
+	if !ok {
+		style = schema.BorderLineStyleThin
+	}
+	result := &schema.BorderEdge{Style: &style}
+	if color := firstColor(edge.Color); color != "" {
+		result.Color = &color
+	}
+	if exact := string(style) == edge.Style; !exact {
+		result.AdditionalProperties = map[string]any{"xlsxStyle": edge.Style}
+	}
+	return result
+}
+
+func indexedBorder(borders []xlsxBorder, id string) (schema.CSVXStylesStylesElemBorder, bool) {
+	index, err := strconv.Atoi(id)
+	if err != nil || index < 0 || index >= len(borders) {
+		return schema.CSVXStylesStylesElemBorder{}, false
+	}
+	source := borders[index]
+	border := schema.CSVXStylesStylesElemBorder{
+		Top: borderEdge(source.Top), Right: borderEdge(source.Right),
+		Bottom: borderEdge(source.Bottom), Left: borderEdge(source.Left),
+	}
+	if border.Top == nil && border.Right == nil && border.Bottom == nil && border.Left == nil {
+		return border, false
+	}
+	return border, true
 }
 func indexedFill(fills []xlsxFill, id string) (map[string]any, bool) {
 	index, err := strconv.Atoi(id)

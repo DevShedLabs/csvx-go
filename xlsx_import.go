@@ -134,7 +134,13 @@ func xlsxSheetPaths(files map[string][]byte) ([]string, []string, error) {
 	}
 	byID := make(map[string]string, len(relationships.Relationships))
 	for _, relationship := range relationships.Relationships {
-		byID[relationship.ID] = path.Clean(path.Join("xl", relationship.Target))
+		// OPC allows absolute targets ("/xl/worksheets/sheet1.xml", as openpyxl writes them) as well
+		// as ones relative to the part's directory.
+		if strings.HasPrefix(relationship.Target, "/") {
+			byID[relationship.ID] = path.Clean(strings.TrimPrefix(relationship.Target, "/"))
+		} else {
+			byID[relationship.ID] = path.Clean(path.Join("xl", relationship.Target))
+		}
 	}
 	names, paths := make([]string, 0, len(workbook.Sheets)), make([]string, 0, len(workbook.Sheets))
 	for _, sheet := range workbook.Sheets {
