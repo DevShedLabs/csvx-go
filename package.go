@@ -98,14 +98,23 @@ func WritePackage(workbook *Workbook, output string) error {
 	if workbook == nil {
 		return fmt.Errorf("workbook is nil")
 	}
-	if workbook.ID == "" || workbook.Version == "" || len(workbook.Sheets) == 0 {
-		return fmt.Errorf("workbook requires an ID, version, and at least one sheet")
-	}
 	file, err := os.Create(output)
 	if err != nil {
 		return fmt.Errorf("create CSVX package: %w", err)
 	}
 	defer file.Close()
+	return WritePackageTo(workbook, file)
+}
+
+// WritePackageTo writes a workbook as a deterministic CSVX ZIP package to any writer, so a package
+// can be produced in memory (see ValidateWorkbook) as well as on disk.
+func WritePackageTo(workbook *Workbook, file io.Writer) error {
+	if workbook == nil {
+		return fmt.Errorf("workbook is nil")
+	}
+	if workbook.ID == "" || workbook.Version == "" || len(workbook.Sheets) == 0 {
+		return fmt.Errorf("workbook requires an ID, version, and at least one sheet")
+	}
 	writer := zip.NewWriter(file)
 	manifest := Manifest{Format: "csvx", Version: workbook.Version, Workbook: "workbook.json"}
 	document := WorkbookDocument{ID: workbook.ID, Version: workbook.Version, NamedRanges: workbook.NamedRanges, Calculation: workbook.Calculation, Source: workbook.Source}
@@ -136,6 +145,7 @@ func WritePackage(workbook *Workbook, output string) error {
 		manifest.Files = append(manifest.Files, "source/original.xlsx", "source/source.json")
 	}
 	resources := map[string][]byte{}
+	var err error
 	resources["manifest.json"], err = json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode manifest: %w", err)
@@ -289,6 +299,21 @@ func OpenDirectory(directory string) (*Workbook, error) {
 			return nil, err
 		}
 		workbook.Sheets = append(workbook.Sheets, sheet)
+	}
+	// Like Load, read styles from the declared resource or the conventional styles.json — an
+	// unpacked package must give the same workbook as the same package zipped.
+	stylesPath := workbookDoc.Styles
+	if stylesPath == "" {
+		stylesPath = "styles.json"
+	}
+	if _, err := os.Stat(filepath.Join(directory, filepath.FromSlash(stylesPath))); err == nil {
+		stylesDoc, err := readJSONFile[struct {
+			Styles []Style `json:"styles"`
+		}](filepath.Join(directory, filepath.FromSlash(stylesPath)))
+		if err != nil {
+			return nil, fmt.Errorf("decode styles resource %q: %w", stylesPath, err)
+		}
+		workbook.Styles = stylesDoc.Styles
 	}
 	return workbook, nil
 }

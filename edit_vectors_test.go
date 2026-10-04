@@ -210,6 +210,11 @@ func checkEditResult(t *testing.T, name, operation string, result *Workbook, arg
 		}
 		compare("cells", cells, v)
 	}
+	if v, ok := e["sourceAuthority"].(string); ok {
+		if result.Source == nil || result.Source.Authority != v {
+			t.Errorf("%s: source authority = %v; want %s", name, result.Source, v)
+		}
+	}
 	if v, ok := e["namedRanges"]; ok {
 		compare("namedRanges", result.NamedRanges, v)
 	}
@@ -311,5 +316,26 @@ func TestNamedRangeVectors(t *testing.T) {
 		if len(got) != len(vector.Expected.Errors) || (len(got) > 0 && !reflect.DeepEqual(got, vector.Expected.Errors)) {
 			t.Errorf("%s: errors = %v; want %v", vector.ID, got, vector.Expected.Errors)
 		}
+	}
+}
+
+func TestValidateWorkbookInMemory(t *testing.T) {
+	workbook := &Workbook{ID: "book", Version: "1.0", Sheets: []*Sheet{{ID: "sheet-1", Name: "Sheet1", Path: "sheets/sheet-1.csv", Columns: []Column{{ID: "A", Name: "A"}}, Records: [][]string{{"1"}, {"2"}}}}}
+	edited, err := InsertRows(workbook, "sheet-1", 2, 1, EditOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited, err = SetCell(edited, "sheet-1", "A3", "=A4", EditOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if result := ValidateWorkbook(edited); !result.Valid {
+		t.Fatalf("edited workbook should validate: %+v", result)
+	}
+	if result := ValidateWorkbook(&Workbook{ID: "book", Version: "1.0"}); result.Valid {
+		t.Fatal("a workbook with no sheets must not validate")
+	}
+	workbook.NamedRanges = []NamedRange{{Name: "A1", RefersTo: "=Sheet1!$A$1"}}
+	if result := ValidateWorkbook(workbook); result.Valid || result.Errors[0].Code != "INVALID_NAMED_RANGE" {
+		t.Fatalf("want INVALID_NAMED_RANGE, got %+v", result)
 	}
 }

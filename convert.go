@@ -59,19 +59,23 @@ func placeholderSheets(inspection *XLSXInspection) []*Sheet {
 	return sheets
 }
 
+// exportXLSXSource writes a CSVX package as XLSX. An unmodified package whose embedded original is
+// authoritative and verifies is recovered exactly (spec 14.2); anything else is written from the
+// CSVX content (spec 14.9), whose warnings are returned by ExportXLSX.
 func exportXLSXSource(input, output string) error {
 	workbook, err := Open(input)
 	if err != nil {
 		return err
 	}
-	if workbook.Source == nil || len(workbook.SourceBytes) == 0 || workbook.Source.Authority != "original" {
-		return fmt.Errorf("CSVX package has no authoritative embedded XLSX source; edited XLSX export is not implemented")
+	if workbook.Source != nil && len(workbook.SourceBytes) > 0 && workbook.Source.Authority == "original" {
+		if hashBytes(workbook.SourceBytes) != workbook.Source.SHA256 {
+			return fmt.Errorf("embedded XLSX source failed SHA-256 verification")
+		}
+		if err := os.WriteFile(output, workbook.SourceBytes, 0o644); err != nil {
+			return fmt.Errorf("write XLSX source: %w", err)
+		}
+		return nil
 	}
-	if hashBytes(workbook.SourceBytes) != workbook.Source.SHA256 {
-		return fmt.Errorf("embedded XLSX source failed SHA-256 verification")
-	}
-	if err := os.WriteFile(output, workbook.SourceBytes, 0o644); err != nil {
-		return fmt.Errorf("write XLSX source: %w", err)
-	}
-	return nil
+	_, err = ExportXLSX(workbook, output)
+	return err
 }

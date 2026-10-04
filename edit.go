@@ -36,6 +36,13 @@ type EditOptions struct {
 }
 
 func finish(workbook *Workbook, options EditOptions) *Workbook {
+	// After a supported edit the embedded XLSX source no longer describes the workbook, so its
+	// authority becomes "csvx" (spec/14-xlsx-interoperability.md, 14.2).
+	if workbook.Source != nil && workbook.Source.Authority == "original" {
+		source := *workbook.Source
+		source.Authority = "csvx"
+		workbook.Source = &source
+	}
 	if options.SkipRecalculate {
 		return workbook
 	}

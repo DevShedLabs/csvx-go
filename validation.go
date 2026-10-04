@@ -1,6 +1,7 @@
 package csvx
 
 import (
+	"bytes"
 	"os"
 	"strings"
 )
@@ -32,6 +33,22 @@ func Validate(filename string) ValidationResult {
 		_, err = Open(filename)
 	}
 	if err != nil {
+		return invalidResult(diagnosticForError(err))
+	}
+	return ValidationResult{Valid: true, Errors: []Diagnostic{}, Warnings: []Diagnostic{}}
+}
+
+// ValidateWorkbook validates a workbook that exists only in memory — for example one that has been
+// edited but not yet saved — by serializing it exactly as WritePackage would and loading the result
+// back, so what is checked is what would be written. Like Validate, this is a structural check (the
+// package loads, resources decode, named ranges are valid); JSON-Schema conformance has one home,
+// csvx-spec/validator (csvx-spec/AGENTS.md rule 3.3), which a host can run on the saved package.
+func ValidateWorkbook(workbook *Workbook) ValidationResult {
+	var buffer bytes.Buffer
+	if err := WritePackageTo(workbook, &buffer); err != nil {
+		return invalidResult(diagnosticForError(err))
+	}
+	if _, err := Load(bytes.NewReader(buffer.Bytes()), int64(buffer.Len())); err != nil {
 		return invalidResult(diagnosticForError(err))
 	}
 	return ValidationResult{Valid: true, Errors: []Diagnostic{}, Warnings: []Diagnostic{}}

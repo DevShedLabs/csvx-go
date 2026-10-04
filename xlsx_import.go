@@ -5,12 +5,18 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type xlsxWorkbook struct {
+	WorkbookPr struct {
+		Date1904 string `xml:"date1904,attr"`
+	} `xml:"workbookPr"`
 	DefinedNames []xlsxDefinedName `xml:"definedNames>definedName"`
 	Sheets       []struct {
 		Name string `xml:"name,attr"`
@@ -77,7 +83,7 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 	}
 	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0", Styles: exportStyles(styles)}
 	for index, sheetPath := range paths {
-		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles)
+		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles, xlsxBool(book.WorkbookPr.Date1904))
 		if err != nil {
 			return nil, fmt.Errorf("import sheet %q: %w", names[index], err)
 		}
@@ -161,7 +167,7 @@ func xlsxSheetPaths(files map[string][]byte) ([]string, []string, error) {
 	return names, paths, nil
 }
 
-func importXLSXSheet(body []byte, name string, index int, shared []string, styles map[string]map[string]any) (*Sheet, error) {
+func importXLSXSheet(body []byte, name string, index int, shared []string, styles map[string]map[string]any, date1904 bool) (*Sheet, error) {
 	var worksheet xlsxWorksheet
 	if err := xml.Unmarshal(body, &worksheet); err != nil {
 		return nil, err
@@ -201,8 +207,17 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 				maxColumn = column + 1
 			}
 			value := xlsxCellValue(cell, shared)
-			values[ref] = value
 			cellMetadata := CellMetadata{Type: xlsxValueType(cell, styles)}
+			switch cellMetadata.Type {
+			case "date", "time", "datetime":
+				// Spec 14.10: the CSV text of a date or time is its ISO 8601 form, not the serial number.
+				if iso, ok := isoFromSerial(cellMetadata.Type, value, date1904); ok && cell.Formula == "" {
+					value = iso
+				}
+			case "error":
+				value = "#" + csvxErrorCode(value)
+			}
+			values[ref] = value
 			if cell.Formula != "" || cell.Style != "" {
 				cellMetadata.Formula, cellMetadata.Style = formulaValue(cell.Formula), xlsxStyleRef(cell.Style)
 			}
@@ -270,13 +285,10 @@ func xlsxValueType(cell xlsxCell, styles map[string]map[string]any) string {
 	}
 	if style, ok := styles[cell.Style]; ok {
 		format, _ := style["numberFormat"].(string)
+		if kind := dateTimeKind(format); kind != "" {
+			return kind
+		}
 		lower := strings.ToLower(format)
-		if strings.Contains(lower, "h") || strings.Contains(lower, "s") {
-			return "time"
-		}
-		if strings.Contains(lower, "d") || strings.Contains(lower, "y") {
-			return "date"
-		}
 		if strings.Contains(format, "$") || strings.Contains(format, "€") || strings.Contains(format, "£") || strings.Contains(lower, "%") || strings.Contains(format, ".") {
 			return "decimal"
 		}
@@ -300,7 +312,7 @@ func typedValue(kind, value string) Value {
 	case "b":
 		return Value{Type: "boolean", Value: value == "TRUE" || value == "1"}
 	case "e":
-		return Value{Type: "error", Code: strings.TrimPrefix(value, "#")}
+		return Value{Type: "error", Code: csvxErrorCode(value)}
 	case "s", "str", "inlineStr":
 		return Value{Type: "string", Value: value}
 	default:
@@ -328,4 +340,55 @@ func splitCellReference(ref string) (int, int) {
 	}
 	row, _ := strconv.Atoi(ref[split:])
 	return column - 1, row
+}
+
+var quotedOrBracketed = regexp.MustCompile(`"[^"]*"|\[[^\]]*\]|\\.`)
+
+// dateTimeKind decides from a number format whether it formats dates, times, or both (spec 14.10),
+// ignoring quoted text, bracketed sections, and escaped characters. It returns "" for any other
+// format.
+func dateTimeKind(format string) string {
+	lower := strings.ToLower(quotedOrBracketed.ReplaceAllString(format, ""))
+	date := strings.ContainsAny(lower, "dy")
+	clock := strings.ContainsAny(lower, "hs")
+	switch {
+	case date && clock:
+		return "datetime"
+	case date:
+		return "date"
+	case clock:
+		return "time"
+	}
+	return ""
+}
+
+// isoFromSerial converts an XLSX serial number to the ISO 8601 text of the given kind.
+func isoFromSerial(kind, serial string, date1904 bool) (string, bool) {
+	number, err := strconv.ParseFloat(strings.TrimSpace(serial), 64)
+	if err != nil || number < 0 {
+		return "", false
+	}
+	epoch := excelEpoch
+	if date1904 {
+		epoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
+	} else if number < 61 {
+		// The 1900 date system counts a nonexistent 29 February 1900, so serials before March 1900
+		// are one day further along than the calendar.
+		epoch = time.Date(1899, 12, 31, 0, 0, 0, 0, time.UTC)
+	}
+	seconds := int64(math.Round(number * 86400))
+	moment := epoch.Add(time.Duration(seconds) * time.Second)
+	switch kind {
+	case "date":
+		if number != math.Floor(number) {
+			return "", false
+		}
+		return moment.Format("2006-01-02"), true
+	case "time":
+		if number >= 1 {
+			return "", false
+		}
+		return moment.Format("15:04:05"), true
+	}
+	return moment.Format("2006-01-02T15:04:05"), true
 }
