@@ -501,12 +501,12 @@ func (c evalContext) eval(node *FormulaNode) Value {
 // EvaluateFormula evaluates a formula string (including the leading "=") against a reference
 // resolver. A parse error surfaces as a NAME error rather than a Go error, since a formula cell
 // with invalid syntax is still a valid cell state a UI must be able to render.
-func EvaluateFormula(formula string, resolve ReferenceResolver) Value {
+func EvaluateFormula(formula string, resolve ReferenceResolver, namedRanges []NamedRange) Value {
 	ast, err := ParseFormula(formula)
 	if err != nil {
 		return errorValue("NAME", err.Error())
 	}
-	return evalContext{resolve: resolve}.eval(ast)
+	return evalContext{resolve: resolve, names: buildNameTable(namedRanges)}.eval(ast)
 }
 
 // FormulaCellInput is one cell handed to RecalculateCells: a formula to evaluate or a plain value.

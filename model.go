@@ -90,6 +90,9 @@ type Workbook struct {
 	Source      *SourceMetadata `json:"source,omitempty"`
 	Styles      []Style         `json:"styles,omitempty"`
 	SourceBytes []byte          `json:"-"`
+
+	// importWarnings are importer findings not yet attached to Source (see importXLSXSource).
+	importWarnings []XLSXDiagnostic
 }
 
 // SourceMetadata describes an embedded external workbook preserved for interoperability.

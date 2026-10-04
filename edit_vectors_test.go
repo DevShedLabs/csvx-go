@@ -55,7 +55,9 @@ func runEditOperation(operation string, workbook *Workbook, a map[string]any) (*
 			}
 			rows = append(rows, texts)
 		}
-		return Paste(workbook, str("sheet"), str("anchor"), rows, off)
+		from := off
+		from.From = str("from")
+		return Paste(workbook, str("sheet"), str("anchor"), rows, from)
 	case "apply-style":
 		return ApplyStyle(workbook, str("sheet"), strs("coordinates"), a["patch"].(map[string]any), off)
 	case "clear-style":
@@ -272,5 +274,42 @@ func checkEditResult(t *testing.T, name, operation string, result *Workbook, arg
 	}
 	if e["nameUnique"] == true && !unique(func(s *Sheet) string { return s.Name }) {
 		t.Errorf("%s: sheet names not unique", name)
+	}
+}
+
+func TestNamedRangeVectors(t *testing.T) {
+	paths, _ := filepath.Glob(filepath.Join(specDir(t, "tests", "invalid"), "named-range-*.json"))
+	if len(paths) == 0 {
+		t.Fatal("no named-range vectors found")
+	}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			ID    string `json:"id"`
+			Input struct {
+				NamedRanges []NamedRange `json:"namedRanges"`
+			} `json:"input"`
+			Expected struct {
+				Valid  bool                          `json:"valid"`
+				Errors []struct{ Code, Name string } `json:"errors"`
+			} `json:"expected"`
+		}
+		if err := json.Unmarshal(raw, &vector); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		diagnostics := ValidateNamedRanges(vector.Input.NamedRanges)
+		if (len(diagnostics) == 0) != vector.Expected.Valid {
+			t.Errorf("%s: valid = %v; want %v (%v)", vector.ID, len(diagnostics) == 0, vector.Expected.Valid, diagnostics)
+		}
+		var got []struct{ Code, Name string }
+		for _, d := range diagnostics {
+			got = append(got, struct{ Code, Name string }{d.Code, d.Name})
+		}
+		if len(got) != len(vector.Expected.Errors) || (len(got) > 0 && !reflect.DeepEqual(got, vector.Expected.Errors)) {
+			t.Errorf("%s: errors = %v; want %v", vector.ID, got, vector.Expected.Errors)
+		}
 	}
 }

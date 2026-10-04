@@ -87,6 +87,7 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 	if len(workbook.Sheets) == 0 {
 		return nil, fmt.Errorf("XLSX contains no worksheets")
 	}
+	workbook.NamedRanges, workbook.importWarnings = importXLSXDefinedNames(book.DefinedNames)
 	return workbook, nil
 }
 

@@ -45,6 +45,8 @@ func diagnosticForError(err error) Diagnostic {
 	message := err.Error()
 	code := "INVALID_PACKAGE"
 	switch {
+	case containsAny(message, "INVALID_NAMED_RANGE"):
+		code = "INVALID_NAMED_RANGE"
 	case containsAny(message, "missing package entry", "missing manifest", "missing workbook"):
 		code = "MISSING_RESOURCE"
 	case containsAny(message, "decode", "malformed"):

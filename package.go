@@ -273,6 +273,9 @@ func OpenDirectory(directory string) (*Workbook, error) {
 	if workbookDoc.Version != "1.0" || len(workbookDoc.Sheets) == 0 {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
+	if problems := ValidateNamedRanges(workbookDoc.NamedRanges); len(problems) > 0 {
+		return nil, &InvalidNamedRangeError{Diagnostics: problems}
+	}
 	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, NamedRanges: workbookDoc.NamedRanges, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
 	if workbook.Source != nil {
 		workbook.SourceBytes, err = os.ReadFile(filepath.Join(directory, "source", "original.xlsx"))
@@ -338,6 +341,9 @@ func Load(reader io.ReaderAt, size int64) (*Workbook, error) {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
 
+	if problems := ValidateNamedRanges(workbookDoc.NamedRanges); len(problems) > 0 {
+		return nil, &InvalidNamedRangeError{Diagnostics: problems}
+	}
 	workbook := &Workbook{ID: workbookDoc.ID, Version: workbookDoc.Version, NamedRanges: workbookDoc.NamedRanges, Calculation: workbookDoc.Calculation, Source: workbookDoc.Source}
 	if workbook.Source != nil {
 		source, ok := entries["source/original.xlsx"]

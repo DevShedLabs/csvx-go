@@ -37,7 +37,7 @@ func importXLSXSource(input, output string) error {
 	workbook.Source = &SourceMetadata{
 		Format: inspection.Format, Filename: inspection.Filename, SHA256: inspection.SHA256,
 		Authority: "original", ImportedAt: time.Now().UTC().Format(time.RFC3339),
-		Importer: "csvx-go", Features: inspection.Features, Warnings: inspection.Warnings,
+		Importer: "csvx-go", Features: inspection.Features, Warnings: append(append([]XLSXDiagnostic(nil), inspection.Warnings...), workbook.importWarnings...),
 	}
 	workbook.SourceBytes = source
 	return WritePackage(workbook, output)

@@ -265,3 +265,49 @@ func RewriteFormulaForSheetChange(formula, oldName, newName string, deleted bool
 	}
 	return applyReplacements(formula, reps)
 }
+
+// TranslateFormula translates a formula copied from one cell to another (spec/15, paste with From):
+// every reference's relative column and row move by columns and rows, and parts marked absolute
+// with `$` stay. A reference that would leave the sheet becomes #REF! (a whole range if either end
+// would).
+func TranslateFormula(formula string, rows, columns int) string {
+	if !formulaParses(formula) {
+		return formula
+	}
+	moved := func(span *refSpan) (string, string, bool) {
+		column := columnIndexFromID(span.col)
+		if span.colAbs == "" {
+			column += columns
+		}
+		row, _ := strconv.Atoi(span.row)
+		if span.rowAbs == "" {
+			row += rows
+		}
+		if column < 0 || row < 1 {
+			return "", "", false
+		}
+		return columnID(column), strconv.Itoa(row), true
+	}
+	var reps []replacement
+	for _, seg := range segments(formula, scanReferences(formula)) {
+		a, b := seg.a, seg.b
+		aCol, aRow, aOK := moved(a)
+		bCol, bRow, bOK := "", "", true
+		if b != nil {
+			bCol, bRow, bOK = moved(b)
+		}
+		if !aOK || !bOK {
+			end := a.end
+			if b != nil {
+				end = b.end
+			}
+			reps = append(reps, replacement{a.sheetStart, end, "#REF!"})
+			continue
+		}
+		reps = append(reps, replacement{a.start, a.end, a.colAbs + aCol + a.rowAbs + aRow})
+		if b != nil {
+			reps = append(reps, replacement{b.start, b.end, b.colAbs + bCol + b.rowAbs + bRow})
+		}
+	}
+	return applyReplacements(formula, reps)
+}

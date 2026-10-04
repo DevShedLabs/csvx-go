@@ -91,7 +91,7 @@ func TestFormulaVectors(t *testing.T) {
 					return toValue(t, cell)
 				}
 				return Value{Type: "blank"}
-			})
+			}, nil)
 			if want := c["expected"]; !reflect.DeepEqual(normalize(t, got), want) {
 				t.Errorf("%s#%d %s: got %v; want %v", file, i+1, input["formula"], normalize(t, got), want)
 			}
@@ -162,7 +162,7 @@ func TestInvalidParseFormulaVectors(t *testing.T) {
 		formula := vector["input"].(string)
 		expected := vector["expected"].(map[string]any)
 		if errs, ok := expected["errors"].([]any); ok && len(errs) > 0 && errs[0].(map[string]any)["code"] == "NAME" {
-			if got := EvaluateFormula(formula, func(ReferenceRequest) Value { return Value{Type: "blank"} }); got.Type != "error" || got.Code != "NAME" {
+			if got := EvaluateFormula(formula, func(ReferenceRequest) Value { return Value{Type: "blank"} }, nil); got.Type != "error" || got.Code != "NAME" {
 				t.Errorf("%s: %s should evaluate to NAME, got %+v", file, formula, got)
 			}
 			continue

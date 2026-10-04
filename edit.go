@@ -30,6 +30,9 @@ func invalidEdit(format string, args ...any) error {
 // EditOptions tunes an edit operation. The zero value recalculates afterwards.
 type EditOptions struct {
 	SkipRecalculate bool
+	// From is used by Paste only: the coordinate the rows were copied from. When set, formula
+	// texts are translated by the offset from From to the paste anchor (spec/15).
+	From string
 }
 
 func finish(workbook *Workbook, options EditOptions) *Workbook {
@@ -593,7 +596,8 @@ func SetCell(workbook *Workbook, sheet, coordinate, text string, options EditOpt
 }
 
 // Paste applies a rectangle of texts, top-left at anchor, as one SetCell each. It is atomic: if any
-// element is invalid, nothing is applied. Formula text is stored verbatim.
+// element is invalid, nothing is applied. Formula text is stored verbatim unless options.From is
+// set, in which case it is translated (spec/15).
 func Paste(workbook *Workbook, sheet, anchor string, rows [][]string, options EditOptions) (*Workbook, error) {
 	target, err := sheetIndex(workbook, sheet)
 	if err != nil {
@@ -603,9 +607,18 @@ func Paste(workbook *Workbook, sheet, anchor string, rows [][]string, options Ed
 	if err != nil {
 		return nil, err
 	}
+	originColumn, originRow := 0, 0
+	if options.From != "" {
+		if originColumn, originRow, err = parseCoordinate(options.From); err != nil {
+			return nil, err
+		}
+	}
 	next := cloneWorkbook(workbook)
 	for r, row := range rows {
 		for c, text := range row {
+			if options.From != "" && strings.HasPrefix(text, "=") {
+				text = TranslateFormula(text, startRow-originRow, startColumn-originColumn)
+			}
 			if err := setCellOn(next.Sheets[target], next.Styles, columnID(startColumn+c)+strconv.Itoa(startRow+r), text); err != nil {
 				return nil, err
 			}
