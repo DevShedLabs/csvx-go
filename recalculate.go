@@ -65,10 +65,11 @@ func RecalculateWorkbook(workbook *Workbook) *Workbook {
 	for _, sheet := range workbook.Sheets {
 		byName[sheet.Name] = BuildCellMap(sheet, workbook.Styles)
 	}
+	resultsByName := RecalculateSheets(byName, nil, workbook.NamedRanges)
 	next := *workbook
 	next.Sheets = make([]*Sheet, len(workbook.Sheets))
 	for i, sheet := range workbook.Sheets {
-		results := RecalculateCells(byName[sheet.Name], RecalculateOptions{ResolveSheet: func(name string) CellMap { return byName[name] }})
+		results := resultsByName[sheet.Name]
 		copied := cloneSheet(sheet)
 		for coordinate, value := range results {
 			column, row, ok := IndicesForCoordinate(coordinate)

@@ -335,6 +335,9 @@ type CSVXWorkbook struct {
 	// Id corresponds to the JSON schema field "id".
 	Id Id `json:"id" yaml:"id" mapstructure:"id"`
 
+	// Workbook-scoped names — spec/02-workbook.md (Named ranges).
+	NamedRanges []CSVXWorkbookNamedRangesElem `json:"namedRanges,omitempty,omitzero" yaml:"namedRanges,omitempty" mapstructure:"namedRanges,omitempty"`
+
 	// Sheets corresponds to the JSON schema field "sheets".
 	Sheets []CSVXWorkbookSheetsElem `json:"sheets" yaml:"sheets" mapstructure:"sheets"`
 
@@ -383,6 +386,55 @@ func (j *CSVXWorkbookCalculationMode) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_CSVXWorkbookCalculationMode, v)
 	}
 	*j = CSVXWorkbookCalculationMode(v)
+	return nil
+}
+
+type CSVXWorkbookNamedRangesElem struct {
+	// Must also not look like a cell reference, be TRUE or FALSE, or be a Core
+	// function name, and must be unique ignoring case (spec/02-workbook.md).
+	Name string `json:"name" yaml:"name" mapstructure:"name"`
+
+	// A formula expression with sheet-qualified references (spec/02-workbook.md).
+	RefersTo string `json:"refersTo" yaml:"refersTo" mapstructure:"refersTo"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CSVXWorkbookNamedRangesElem) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["name"]; raw != nil && !ok {
+		return fmt.Errorf("field name in CSVXWorkbookNamedRangesElem: required")
+	}
+	if _, ok := raw["refersTo"]; raw != nil && !ok {
+		return fmt.Errorf("field refersTo in CSVXWorkbookNamedRangesElem: required")
+	}
+	type Plain CSVXWorkbookNamedRangesElem
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if matched, _ := regexp.MatchString(`^[A-Za-z_][A-Za-z0-9_.]*$`, string(plain.Name)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Name", `^[A-Za-z_][A-Za-z0-9_.]*$`)
+	}
+	if utf8.RuneCountInString(string(plain.Name)) > 255 {
+		return fmt.Errorf("field %s length: must be <= %d", "name", 255)
+	}
+	if matched, _ := regexp.MatchString(`^=`, string(plain.RefersTo)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "RefersTo", `^=`)
+	}
+	st := reflect.TypeOf(Plain{})
+	for i := range st.NumField() {
+		delete(raw, st.Field(i).Name)
+		delete(raw, strings.Split(st.Field(i).Tag.Get("json"), ",")[0])
+	}
+	if err := mapstructure.Decode(raw, &plain.AdditionalProperties); err != nil {
+		return err
+	}
+	*j = CSVXWorkbookNamedRangesElem(plain)
 	return nil
 }
 

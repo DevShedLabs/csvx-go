@@ -243,7 +243,40 @@ func truthy(v Value) (bool, *Value) {
 	return false, &e
 }
 
-type evalContext struct{ resolve ReferenceResolver }
+// nameTable maps a lower-cased declared name to its parsed refersTo (nil when it does not parse).
+type nameTable map[string]*FormulaNode
+
+func buildNameTable(namedRanges []NamedRange) nameTable {
+	table := nameTable{}
+	for _, item := range namedRanges {
+		ast, err := ParseFormula(item.RefersTo)
+		if err != nil {
+			ast = nil
+		}
+		table[strings.ToLower(item.Name)] = ast
+	}
+	return table
+}
+
+type evalContext struct {
+	resolve ReferenceResolver
+	names   nameTable
+	// insideName is set while evaluating a name's own refersTo, where names are not allowed.
+	insideName bool
+}
+
+// lookupName returns what a name stands for, or nil when it is not declared (or not usable here).
+func (c evalContext) lookupName(node *FormulaNode) *FormulaNode {
+	if c.insideName {
+		return nil
+	}
+	return c.names[strings.ToLower(node.Text)]
+}
+
+func (c evalContext) inside() evalContext {
+	c.insideName = true
+	return c
+}
 
 func columnIndexOfLetters(letters string) int { return columnIndexFromID(letters) }
 
@@ -269,6 +302,11 @@ func isAggregatable(v Value) bool { return v.Type == "integer" || v.Type == "dec
 func (c evalContext) argValues(arg *FormulaNode) []Value {
 	if arg.Kind == NodeRange {
 		return c.flattenRange(arg)
+	}
+	if arg.Kind == NodeName {
+		if target := c.lookupName(arg); target != nil && target.Kind == NodeRange {
+			return c.inside().flattenRange(target)
+		}
 	}
 	return []Value{c.eval(arg)}
 }
@@ -410,6 +448,11 @@ func (c evalContext) eval(node *FormulaNode) Value {
 		return Value{Type: "boolean", Value: node.Bool}
 	case NodeRefError:
 		return errorValue("REF", "")
+	case NodeName:
+		if target := c.lookupName(node); target != nil {
+			return c.inside().eval(target)
+		}
+		return errorValue("NAME", "")
 	case NodeReference:
 		return c.resolve(ReferenceRequest{Sheet: node.Ref.Sheet, HasSheet: node.Ref.HasSht, Column: node.Ref.Column, Row: node.Ref.Row})
 	case NodeRange:
@@ -483,56 +526,127 @@ type RecalculateOptions struct {
 
 func refCoordinate(ref CellRef) string { return ref.Column + strconv.Itoa(ref.Row+1) }
 
-func collectReferences(node *FormulaNode, into *[]CellRef) {
+type rangeRef struct {
+	sheet    string
+	hasSheet bool
+	fromCol  int
+	toCol    int
+	fromRow  int
+	toRow    int
+}
+
+// collectReferences gathers the single-cell references and the ranges a formula reads.
+func collectReferences(node *FormulaNode, cells *[]CellRef, ranges *[]rangeRef, names nameTable, insideName bool) {
 	switch node.Kind {
+	case NodeName:
+		if !insideName {
+			if target := names[strings.ToLower(node.Text)]; target != nil {
+				collectReferences(target, cells, ranges, names, true)
+			}
+		}
 	case NodeReference:
-		*into = append(*into, node.Ref)
+		*cells = append(*cells, node.Ref)
 	case NodeRange:
-		*into = append(*into, node.Start.Ref, node.End.Ref)
+		a, b := columnIndexFromID(node.Start.Ref.Column), columnIndexFromID(node.End.Ref.Column)
+		r := rangeRef{fromCol: min(a, b), toCol: max(a, b), fromRow: min(node.Start.Ref.Row, node.End.Ref.Row), toRow: max(node.Start.Ref.Row, node.End.Ref.Row)}
+		r.sheet, r.hasSheet = node.Start.Ref.Sheet, node.Start.Ref.HasSht
+		if !r.hasSheet {
+			r.sheet, r.hasSheet = node.End.Ref.Sheet, node.End.Ref.HasSht
+		}
+		*ranges = append(*ranges, r)
 	case NodeCall:
 		for _, a := range node.Args {
-			collectReferences(a, into)
+			collectReferences(a, cells, ranges, names, insideName)
 		}
 	case NodeUnary, NodePercent:
-		collectReferences(node.Operand, into)
+		collectReferences(node.Operand, cells, ranges, names, insideName)
 	case NodeBinary:
-		collectReferences(node.Left, into)
-		collectReferences(node.Right, into)
+		collectReferences(node.Left, cells, ranges, names, insideName)
+		collectReferences(node.Right, cells, ranges, names, insideName)
 	}
 }
 
-// RecalculateCells recalculates every formula cell in a single-sheet coordinate map in dependency
-// order (spec/10-calculation.md) and returns a result for each formula cell. Cells in a circular
-// dependency all resolve to CYCLE.
-func RecalculateCells(cells CellMap, options RecalculateOptions) map[string]Value {
-	asts := map[string]*FormulaNode{}
-	parseErrs := map[string]string{}
-	deps := map[string][]string{}
-	var formulaCells []string
-	for coordinate, cell := range cells {
-		if cell.Formula == "" {
-			continue
-		}
-		formulaCells = append(formulaCells, coordinate)
+type calcNode struct {
+	sheet, coordinate string
+	ast               *FormulaNode
+	parseErr          string
+	deps              []string
+}
+
+type formulaCellPos struct {
+	id       string
+	col, row int
+}
+
+// RecalculateSheets recalculates every formula cell across a set of named sheets in dependency order
+// (spec/10-calculation.md). The graph has an edge for every cell a formula reads — each cell inside
+// a range, and cells on other sheets — so a reference to another sheet's formula cell sees its
+// calculated value, and a cycle that crosses sheets is CYCLE in every cell on it. A reference to a
+// sheet that is not in sheets (and not supplied by external) is REF. A declared name contributes
+// the edges of its refersTo. It returns results only for
+// cells that had a formula, keyed by sheet name and then coordinate.
+func RecalculateSheets(sheets map[string]CellMap, external func(name string) CellMap, namedRanges []NamedRange) map[string]map[string]Value {
+	names := buildNameTable(namedRanges)
+	idOf := func(sheet, coordinate string) string { return sheet + "\n" + coordinate }
+	nodes := map[string]*calcNode{}
+	var ids []string
+	positions := map[string][]formulaCellPos{}
+	sheetNames := make([]string, 0, len(sheets))
+	for name := range sheets {
+		sheetNames = append(sheetNames, name)
 	}
-	sort.Strings(formulaCells) // deterministic evaluation order
-	for _, coordinate := range formulaCells {
-		ast, err := ParseFormula(cells[coordinate].Formula)
-		if err != nil {
-			parseErrs[coordinate] = err.Error()
-			deps[coordinate] = nil
-			continue
-		}
-		asts[coordinate] = ast
-		var refs []CellRef
-		collectReferences(ast, &refs)
-		for _, ref := range refs {
-			if !ref.HasSht {
-				deps[coordinate] = append(deps[coordinate], refCoordinate(ref))
+	sort.Strings(sheetNames) // deterministic evaluation order
+	for _, sheet := range sheetNames {
+		cells := sheets[sheet]
+		coordinates := make([]string, 0, len(cells))
+		for coordinate, cell := range cells {
+			if cell.Formula != "" {
+				coordinates = append(coordinates, coordinate)
 			}
 		}
-		if _, ok := deps[coordinate]; !ok {
-			deps[coordinate] = nil
+		sort.Strings(coordinates)
+		for _, coordinate := range coordinates {
+			id := idOf(sheet, coordinate)
+			node := &calcNode{sheet: sheet, coordinate: coordinate}
+			if ast, err := ParseFormula(cells[coordinate].Formula); err != nil {
+				node.parseErr = err.Error()
+			} else {
+				node.ast = ast
+			}
+			nodes[id] = node
+			ids = append(ids, id)
+			if column, row, ok := IndicesForCoordinate(coordinate); ok {
+				positions[sheet] = append(positions[sheet], formulaCellPos{id: id, col: column, row: row + 1})
+			}
+		}
+	}
+	for _, id := range ids {
+		node := nodes[id]
+		if node.ast == nil {
+			continue
+		}
+		var cells []CellRef
+		var ranges []rangeRef
+		collectReferences(node.ast, &cells, &ranges, names, false)
+		for _, ref := range cells {
+			sheet := node.sheet
+			if ref.HasSht {
+				sheet = ref.Sheet
+			}
+			if dep := idOf(sheet, refCoordinate(ref)); nodes[dep] != nil {
+				node.deps = append(node.deps, dep)
+			}
+		}
+		for _, r := range ranges {
+			sheet := node.sheet
+			if r.hasSheet {
+				sheet = r.sheet
+			}
+			for _, candidate := range positions[sheet] {
+				if candidate.col >= r.fromCol && candidate.col <= r.toCol && candidate.row-1 >= r.fromRow && candidate.row-1 <= r.toRow {
+					node.deps = append(node.deps, candidate.id)
+				}
+			}
 		}
 	}
 
@@ -545,14 +659,14 @@ func RecalculateCells(cells CellMap, options RecalculateOptions) map[string]Valu
 	cyclic := map[string]bool{}
 	var order, stack []string
 	var visit func(string)
-	visit = func(coordinate string) {
-		switch color[coordinate] {
+	visit = func(id string) {
+		switch color[id] {
 		case black:
 			return
 		case gray:
 			start := 0
 			for i, s := range stack {
-				if s == coordinate {
+				if s == id {
 					start = i
 				}
 			}
@@ -561,64 +675,76 @@ func RecalculateCells(cells CellMap, options RecalculateOptions) map[string]Valu
 			}
 			return
 		}
-		if _, ok := deps[coordinate]; !ok {
-			return
-		}
-		color[coordinate] = gray
-		stack = append(stack, coordinate)
-		for _, dep := range deps[coordinate] {
+		color[id] = gray
+		stack = append(stack, id)
+		for _, dep := range nodes[id].deps {
 			visit(dep)
 		}
 		stack = stack[:len(stack)-1]
-		color[coordinate] = black
-		order = append(order, coordinate)
+		color[id] = black
+		order = append(order, id)
 	}
-	for _, coordinate := range formulaCells {
-		visit(coordinate)
+	for _, id := range ids {
+		visit(id)
 	}
 
 	results := map[string]Value{}
-	resolve := func(ref ReferenceRequest) Value {
-		coordinate := ref.Column + strconv.Itoa(ref.Row+1)
-		if ref.HasSheet {
-			if options.ResolveSheet == nil {
+	resolver := func(own string) ReferenceResolver {
+		return func(ref ReferenceRequest) Value {
+			sheet := own
+			if ref.HasSheet {
+				sheet = ref.Sheet
+			}
+			cells, ok := sheets[sheet]
+			if !ok && ref.HasSheet && external != nil {
+				cells = external(sheet)
+				ok = cells != nil
+			}
+			if !ok {
 				return errorValue("REF", "")
 			}
-			sheetCells := options.ResolveSheet(ref.Sheet)
-			if sheetCells == nil {
-				return errorValue("REF", "")
+			coordinate := ref.Column + strconv.Itoa(ref.Row+1)
+			id := idOf(sheet, coordinate)
+			if cyclic[id] {
+				return errorValue("CYCLE", "")
 			}
-			if cell, ok := sheetCells[coordinate]; ok && cell.Value.Type != "" {
+			if v, done := results[id]; done {
+				return v
+			}
+			if cell, found := cells[coordinate]; found && cell.Formula == "" && cell.Value.Type != "" {
 				return cell.Value
 			}
 			return Value{Type: "blank"}
 		}
-		if cyclic[coordinate] {
-			return errorValue("CYCLE", "")
-		}
-		if v, ok := results[coordinate]; ok {
-			return v
-		}
-		if cell, ok := cells[coordinate]; ok && cell.Formula == "" && cell.Value.Type != "" {
-			return cell.Value
-		}
-		return Value{Type: "blank"}
 	}
-	ctx := evalContext{resolve: resolve}
-	for _, coordinate := range order {
-		if cyclic[coordinate] {
+	for _, id := range order {
+		if cyclic[id] {
 			continue
 		}
-		if message, bad := parseErrs[coordinate]; bad {
-			results[coordinate] = errorValue("NAME", message)
+		node := nodes[id]
+		if node.ast == nil {
+			results[id] = errorValue("NAME", node.parseErr)
 			continue
 		}
-		if ast := asts[coordinate]; ast != nil {
-			results[coordinate] = ctx.eval(ast)
-		}
+		results[id] = evalContext{resolve: resolver(node.sheet), names: names}.eval(node.ast)
 	}
-	for coordinate := range cyclic {
-		results[coordinate] = errorValue("CYCLE", "")
+	for id := range cyclic {
+		results[id] = errorValue("CYCLE", "")
 	}
-	return results
+	out := map[string]map[string]Value{}
+	for _, sheet := range sheetNames {
+		out[sheet] = map[string]Value{}
+	}
+	for id, node := range nodes {
+		out[node.sheet][node.coordinate] = results[id]
+	}
+	return out
+}
+
+// RecalculateCells recalculates every formula cell in a single-sheet coordinate map in dependency
+// order and returns a result for each formula cell. Cells in a circular dependency all resolve to
+// CYCLE.
+func RecalculateCells(cells CellMap, options RecalculateOptions) map[string]Value {
+	const self = "\x00self"
+	return RecalculateSheets(map[string]CellMap{self: cells}, options.ResolveSheet, nil)[self]
 }

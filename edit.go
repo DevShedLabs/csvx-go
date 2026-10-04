@@ -68,6 +68,7 @@ func cloneWorkbook(workbook *Workbook) *Workbook {
 		copied.Sheets[i] = cloneSheet(sheet)
 	}
 	copied.Styles = append([]Style(nil), workbook.Styles...)
+	copied.NamedRanges = append([]NamedRange(nil), workbook.NamedRanges...)
 	return &copied
 }
 
@@ -96,6 +97,46 @@ func parseCoordinate(coordinate string) (column, rowNumber int, err error) {
 	return columnIndexFromID(m[1]), rowNumber, nil
 }
 
+// rewriteCellFormulas rewrites every formula a cell's metadata carries: its own Formula, and a
+// validation rule's formula1/formula2 when they begin with "=" (spec/15, "Reference rewriting").
+func rewriteCellFormulas(metadata CellMetadata, rewrite func(string) string) CellMetadata {
+	if metadata.Formula != "" {
+		metadata.Formula = rewrite(metadata.Formula)
+	}
+	if len(metadata.Validation) == 0 {
+		return metadata
+	}
+	var rule map[string]json.RawMessage
+	if err := json.Unmarshal(metadata.Validation, &rule); err != nil {
+		return metadata
+	}
+	changed := false
+	for _, key := range []string{"formula1", "formula2"} {
+		var text string
+		if raw, ok := rule[key]; ok && json.Unmarshal(raw, &text) == nil && strings.HasPrefix(text, "=") {
+			if body, err := json.Marshal(rewrite(text)); err == nil {
+				rule[key], changed = body, true
+			}
+		}
+	}
+	if changed {
+		if body, err := json.Marshal(rule); err == nil {
+			metadata.Validation = body
+		}
+	}
+	return metadata
+}
+
+// noHomeSheet stands in for the sheet of a name's refersTo: every reference in it is
+// sheet-qualified, so none targets "its own" sheet.
+const noHomeSheet = "\x00"
+
+func rewriteNamedRanges(workbook *Workbook, rewrite func(string) string) {
+	for i := range workbook.NamedRanges {
+		workbook.NamedRanges[i].RefersTo = rewrite(workbook.NamedRanges[i].RefersTo)
+	}
+}
+
 // ---------------------------------------------------------------------------------------------
 // Structural edits: insert/delete rows and columns.
 
@@ -107,9 +148,7 @@ func applyAxisEdit(workbook *Workbook, target int, edit AxisEdit, reshape func(*
 	for index, sheet := range next.Sheets {
 		rewritten := map[string]CellMetadata{}
 		for coordinate, metadata := range sheet.Cells {
-			if metadata.Formula != "" {
-				metadata.Formula = RewriteFormulaForAxisEdit(metadata.Formula, sheet.Name, targetName, edit)
-			}
+			metadata = rewriteCellFormulas(metadata, func(f string) string { return RewriteFormulaForAxisEdit(f, sheet.Name, targetName, edit) })
 			if index != target {
 				rewritten[coordinate] = metadata
 				continue
@@ -147,6 +186,7 @@ func applyAxisEdit(workbook *Workbook, target int, edit AxisEdit, reshape func(*
 		rewritePrint(sheet, targetName, edit)
 		reshape(sheet)
 	}
+	rewriteNamedRanges(next, func(f string) string { return RewriteFormulaForAxisEdit(f, noHomeSheet, targetName, edit) })
 	return next
 }
 
@@ -447,12 +487,10 @@ func AddSheet(workbook *Workbook, options EditOptions) *Workbook {
 func rewriteAllFormulas(workbook *Workbook, rewrite func(string) string) {
 	for _, sheet := range workbook.Sheets {
 		for coordinate, metadata := range sheet.Cells {
-			if metadata.Formula != "" {
-				metadata.Formula = rewrite(metadata.Formula)
-				sheet.Cells[coordinate] = metadata
-			}
+			sheet.Cells[coordinate] = rewriteCellFormulas(metadata, rewrite)
 		}
 	}
+	rewriteNamedRanges(workbook, rewrite)
 }
 
 // RenameSheet renames a sheet and rewrites every sheet-qualified reference to it.

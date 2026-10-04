@@ -43,6 +43,35 @@ func (s Style) MarshalJSON() ([]byte, error) {
 	return json.Marshal(flattenAdditionalProperties(generic))
 }
 
+// NamedRange is a workbook-scoped name (spec/02-workbook.md, Named ranges). Like Style, it is a
+// defined type over the generated struct so unknown properties round-trip (rule 3.6).
+type NamedRange schema.CSVXWorkbookNamedRangesElem
+
+// UnmarshalJSON decodes through the generated type so the name pattern is enforced and unknown
+// properties land in AdditionalProperties.
+func (n *NamedRange) UnmarshalJSON(data []byte) error {
+	var decoded schema.CSVXWorkbookNamedRangesElem
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*n = NamedRange(decoded)
+	return nil
+}
+
+// MarshalJSON writes the typed fields plus preserved unknown properties, without the generated
+// AdditionalProperties bucket key itself.
+func (n NamedRange) MarshalJSON() ([]byte, error) {
+	body, err := json.Marshal(schema.CSVXWorkbookNamedRangesElem(n))
+	if err != nil {
+		return nil, err
+	}
+	var generic any
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return nil, err
+	}
+	return json.Marshal(flattenAdditionalProperties(generic))
+}
+
 // Manifest identifies a CSVX package and its resources.
 type Manifest struct {
 	Format   string   `json:"format"`
@@ -56,6 +85,7 @@ type Workbook struct {
 	ID          string          `json:"id"`
 	Version     string          `json:"version"`
 	Sheets      []*Sheet        `json:"sheets"`
+	NamedRanges []NamedRange    `json:"namedRanges,omitempty"`
 	Calculation Calculation     `json:"calculation,omitempty"`
 	Source      *SourceMetadata `json:"source,omitempty"`
 	Styles      []Style         `json:"styles,omitempty"`
@@ -132,6 +162,7 @@ type WorkbookDocument struct {
 	ID          string          `json:"id"`
 	Version     string          `json:"version"`
 	Sheets      []SheetEntry    `json:"sheets"`
+	NamedRanges []NamedRange    `json:"namedRanges,omitempty"`
 	Calculation Calculation     `json:"calculation,omitempty"`
 	Source      *SourceMetadata `json:"source,omitempty"`
 	Styles      string          `json:"styles,omitempty"`

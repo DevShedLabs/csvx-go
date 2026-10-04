@@ -12,6 +12,7 @@ import (
 //	reference  = [sheet "!"] cell
 //	cell       = ["$"] column ["$"] row
 //	ref-error  = "#REF!"
+//	name       = identifier   (a declared workbook name, spec/02-workbook.md; undeclared is NAME)
 //
 // Precedence, highest to lowest: unary signs, percent, multiplication/division, addition/
 // subtraction, comparisons. This file only produces an AST; evaluation is in calculate.go.
@@ -33,6 +34,7 @@ const (
 	NodeString
 	NodeBoolean
 	NodeRefError
+	NodeName
 	NodeReference
 	NodeRange
 	NodeCall
@@ -44,7 +46,7 @@ const (
 // FormulaNode is a parsed formula expression. Which fields are set depends on Kind.
 type FormulaNode struct {
 	Kind     NodeKind
-	Text     string // NodeNumber (literal text), NodeString, NodeCall (upper-cased name)
+	Text     string // NodeNumber (literal text), NodeString, NodeCall (upper-cased name), NodeName (as written)
 	Bool     bool
 	Ref      CellRef      // NodeReference
 	Start    *FormulaNode // NodeRange endpoints (NodeReference)
@@ -92,7 +94,7 @@ func isIdentStart(c byte) bool {
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-func isIdentPart(c byte) bool { return isIdentStart(c) || isDigit(c) }
+func isIdentPart(c byte) bool { return isIdentStart(c) || isDigit(c) || c == '.' }
 
 func tokenize(source string) ([]token, error) {
 	var tokens []token
@@ -345,6 +347,9 @@ func (p *parser) parsePrimary() (*FormulaNode, error) {
 			}
 			return p.finishReferenceOrRange(ref)
 		}
+		if isName(t.value) {
+			return &FormulaNode{Kind: NodeName, Text: t.value}, nil
+		}
 		return nil, parseErrorf("Unexpected identifier '%s'", t.value)
 	}
 	return nil, parseErrorf("Unexpected token in formula")
@@ -454,4 +459,20 @@ func (p *parser) parseAdditive() (*FormulaNode, error) {
 
 func (p *parser) parseComparison() (*FormulaNode, error) {
 	return p.parseBinaryLevel("= != < <= > >=", p.parseAdditive)
+}
+
+// isName reports whether text can be a workbook name: a letter or underscore, then letters, digits,
+// underscores or dots (spec/02-workbook.md). It does not check that the name is not a cell
+// reference; the parser has already tried that.
+func isName(text string) bool {
+	if text == "" || !(text[0] == '_' || (text[0] >= 'A' && text[0] <= 'Z') || (text[0] >= 'a' && text[0] <= 'z')) {
+		return false
+	}
+	for i := 1; i < len(text); i++ {
+		c := text[i]
+		if !(c == '_' || c == '.' || isDigit(c) || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+			return false
+		}
+	}
+	return true
 }

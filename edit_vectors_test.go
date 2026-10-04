@@ -208,6 +208,26 @@ func checkEditResult(t *testing.T, name, operation string, result *Workbook, arg
 		}
 		compare("cells", cells, v)
 	}
+	if v, ok := e["namedRanges"]; ok {
+		compare("namedRanges", result.NamedRanges, v)
+	}
+	if v, ok := e["validationFormulas"]; ok {
+		perSheet("validationFormulas", v, func(s *Sheet) any {
+			out := map[string]any{}
+			for coordinate, metadata := range s.Cells {
+				var rule map[string]any
+				if len(metadata.Validation) > 0 && json.Unmarshal(metadata.Validation, &rule) == nil {
+					for _, key := range []string{"formula1", "formula2"} {
+						if text, ok := rule[key].(string); ok {
+							out[coordinate] = text
+							break
+						}
+					}
+				}
+			}
+			return out
+		})
+	}
 	if v, ok := e["styles"]; ok {
 		styles := result.Styles
 		if styles == nil {

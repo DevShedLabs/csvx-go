@@ -99,24 +99,56 @@ func TestFormulaVectors(t *testing.T) {
 	}
 }
 
+func toCellMap(t *testing.T, raw map[string]any) CellMap {
+	t.Helper()
+	cells := CellMap{}
+	for coordinate, item := range raw {
+		cell := item.(map[string]any)
+		if formula, ok := cell["formula"].(string); ok {
+			cells[coordinate] = FormulaCellInput{Formula: formula}
+		} else if wrapped, ok := cell["value"].(map[string]any); ok {
+			// Older vectors wrap the typed value: {"value": {"type": ..., "value": ...}}.
+			cells[coordinate] = FormulaCellInput{Value: toValue(t, wrapped)}
+		} else {
+			cells[coordinate] = FormulaCellInput{Value: toValue(t, cell)}
+		}
+	}
+	return cells
+}
+
 func TestCalculationVectors(t *testing.T) {
 	for file, vector := range readVectors(t, specDir(t, "tests", "calculations")) {
-		cells := CellMap{}
-		for coordinate, raw := range vector["input"].(map[string]any)["cells"].(map[string]any) {
-			cell := raw.(map[string]any)
-			if formula, ok := cell["formula"].(string); ok {
-				cells[coordinate] = FormulaCellInput{Formula: formula}
-			} else if wrapped, ok := cell["value"].(map[string]any); ok {
-				// Older vectors wrap the typed value: {"value": {"type": ..., "value": ...}}.
-				cells[coordinate] = FormulaCellInput{Value: toValue(t, wrapped)}
-			} else {
-				cells[coordinate] = FormulaCellInput{Value: toValue(t, cell)}
+		for i, c := range vectorCases(vector) {
+			input := c["input"].(map[string]any)
+			expected := c["expected"].(map[string]any)
+			label := file + "#" + strconv.Itoa(i+1)
+			if vector["operation"] == "recalculate-workbook" {
+				sheets := map[string]CellMap{}
+				for name, cells := range input["sheets"].(map[string]any) {
+					sheets[name] = toCellMap(t, cells.(map[string]any))
+				}
+				var names []NamedRange
+				if raw, ok := input["namedRanges"]; ok {
+					body, _ := json.Marshal(raw)
+					if err := json.Unmarshal(body, &names); err != nil {
+						t.Fatal(err)
+					}
+				}
+				results := RecalculateSheets(sheets, nil, names)
+				for name, want := range expected {
+					for coordinate, value := range want.(map[string]any) {
+						if got := normalize(t, results[name][coordinate]); !reflect.DeepEqual(got, value) {
+							t.Errorf("%s %s!%s: got %v; want %v", label, name, coordinate, got, value)
+						}
+					}
+				}
+				continue
 			}
-		}
-		results := RecalculateCells(cells, RecalculateOptions{})
-		for coordinate, want := range vector["expected"].(map[string]any) {
-			if got := normalize(t, results[coordinate]); !reflect.DeepEqual(got, want) {
-				t.Errorf("%s %s: got %v; want %v", file, coordinate, got, want)
+			results := RecalculateCells(toCellMap(t, input["cells"].(map[string]any)), RecalculateOptions{})
+			for coordinate, want := range expected {
+				if got := normalize(t, results[coordinate]); !reflect.DeepEqual(got, want) {
+					t.Errorf("%s %s: got %v; want %v", label, coordinate, got, want)
+				}
 			}
 		}
 	}
