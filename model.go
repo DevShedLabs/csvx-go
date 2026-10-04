@@ -18,67 +18,29 @@ import (
 // in anywhere yet, so nothing currently depends on inheriting the generated UnmarshalJSON here).
 type Style schema.CSVXStylesStylesElem
 
-// MarshalJSON serializes a Style without the generated AdditionalProperties bucket field, which
-// encoding/json would otherwise emit as a literal `"AdditionalProperties": null` key — schema-
-// legal (styles.schema.json allows additional properties) but wrong output.
+// UnmarshalJSON decodes through the generated type so the id pattern is enforced and properties the
+// schema does not define land in AdditionalProperties (rule 3.6: unknown fields round-trip).
+func (s *Style) UnmarshalJSON(data []byte) error {
+	var decoded schema.CSVXStylesStylesElem
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*s = Style(decoded)
+	return nil
+}
+
+// MarshalJSON writes the typed fields plus any preserved unknown properties (at the style level and
+// inside border), without the generated AdditionalProperties bucket key itself.
 func (s Style) MarshalJSON() ([]byte, error) {
-	type wire struct {
-		ID           string                                `json:"id"`
-		NumberFormat *string                               `json:"numberFormat,omitempty"`
-		Font         schema.CSVXStylesStylesElemFont       `json:"font,omitempty"`
-		Fill         schema.CSVXStylesStylesElemFill       `json:"fill,omitempty"`
-		Border       *borderWire                           `json:"border,omitempty"`
-		Alignment    schema.CSVXStylesStylesElemAlignment  `json:"alignment,omitempty"`
-		Protection   schema.CSVXStylesStylesElemProtection `json:"protection,omitempty"`
+	body, err := json.Marshal(schema.CSVXStylesStylesElem(s))
+	if err != nil {
+		return nil, err
 	}
-	return json.Marshal(wire{
-		ID:           s.Id,
-		NumberFormat: s.NumberFormat,
-		Font:         s.Font,
-		Fill:         s.Fill,
-		Border:       borderToWire(s.Border),
-		Alignment:    s.Alignment,
-		Protection:   s.Protection,
-	})
-}
-
-// borderWire / borderEdgeWire mirror the generated border types minus their AdditionalProperties
-// bucket, for the same reason Style.MarshalJSON drops its own.
-type borderWire struct {
-	Style  *schema.BorderLineStyle `json:"style,omitempty"`
-	Color  *string                 `json:"color,omitempty"`
-	Top    *borderEdgeWire         `json:"top,omitempty"`
-	Right  *borderEdgeWire         `json:"right,omitempty"`
-	Bottom *borderEdgeWire         `json:"bottom,omitempty"`
-	Left   *borderEdgeWire         `json:"left,omitempty"`
-}
-
-type borderEdgeWire struct {
-	Style *schema.BorderLineStyle `json:"style,omitempty"`
-	Color *string                 `json:"color,omitempty"`
-}
-
-func edgeToWire(edge *schema.BorderEdge) *borderEdgeWire {
-	if edge == nil {
-		return nil
+	var generic any
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return nil, err
 	}
-	return &borderEdgeWire{Style: edge.Style, Color: edge.Color}
-}
-
-// borderToWire returns nil for an entirely empty border so it is omitted from styles.json.
-func borderToWire(border *schema.CSVXStylesStylesElemBorder) *borderWire {
-	if border == nil {
-		return nil
-	}
-	wire := borderWire{
-		Style: border.Style, Color: border.Color,
-		Top: edgeToWire(border.Top), Right: edgeToWire(border.Right),
-		Bottom: edgeToWire(border.Bottom), Left: edgeToWire(border.Left),
-	}
-	if wire == (borderWire{}) {
-		return nil
-	}
-	return &wire
+	return json.Marshal(flattenAdditionalProperties(generic))
 }
 
 // Manifest identifies a CSVX package and its resources.
