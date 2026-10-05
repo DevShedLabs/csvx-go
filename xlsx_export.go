@@ -645,6 +645,12 @@ func (e *xlsxExporter) cellXML(sheet *Sheet, coordinate string, column int, raw 
 	}
 
 	value := ResolveCellValue(raw, declared, format)
+	if value.Type == "error" && declared != "error" {
+		// The text does not match the cell's declared type. Keep it as the text it is, rather than
+		// turning it into an error that destroys it, and say so (spec 14.9, 04-data-types.md).
+		e.warn("value", location, fmt.Sprintf("text %q is not a valid %s and was written as text", raw, declared))
+		value = Value{Type: "string", Value: raw}
+	}
 	typeAttr, body, force := e.valueXML(location, value, raw, format)
 	xf := e.xfIndex(metadata.Style, force)
 	if body == "" && xf == 0 {

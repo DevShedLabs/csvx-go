@@ -74,7 +74,7 @@ func TestCSVXToXLSXVectors(t *testing.T) {
 			workbook.NamedRanges = c.NamedRanges
 		}
 		for _, edit := range c.Edits {
-			if workbook, err = runEditOperation(edit.Operation, workbook, edit.Args); err != nil {
+			if workbook, err = runEditOperation(edit.Operation, workbook, edit.Args, false); err != nil {
 				t.Fatalf("%s: %s: %v", name, edit.Operation, err)
 			}
 		}

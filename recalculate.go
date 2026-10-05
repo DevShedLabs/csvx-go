@@ -13,9 +13,9 @@ func CanonicalCellText(v Value) string {
 		return "#" + v.Code
 	case "boolean":
 		if b, _ := v.Value.(bool); b {
-			return "TRUE"
+			return "true"
 		}
-		return "FALSE"
+		return "false"
 	}
 	return stringOf(v)
 }

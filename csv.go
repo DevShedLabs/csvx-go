@@ -31,26 +31,22 @@ func readCSV(r io.Reader) ([]string, [][]string, error) {
 	return header, records[1:], nil
 }
 
+// writeCSV writes a sheet's header and records in the canonical form (spec 11.1, 11.2): LF
+// terminators and minimal quoting.
 func writeCSV(w io.Writer, sheet *Sheet) error {
-	writer := csv.NewWriter(w)
 	header := make([]string, len(sheet.Columns))
 	for i, column := range sheet.Columns {
 		header[i] = column.Name
 	}
-	if err := writer.Write(header); err != nil {
-		return fmt.Errorf("write CSV header: %w", err)
-	}
+	rows := [][]string{header}
 	for _, record := range sheet.Records {
 		if len(record) != len(header) {
 			return fmt.Errorf("sheet %q has a record with %d fields; expected %d", sheet.Name, len(record), len(header))
 		}
-		if err := writer.Write(record); err != nil {
-			return fmt.Errorf("write CSV record: %w", err)
-		}
+		rows = append(rows, record)
 	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return fmt.Errorf("flush CSV: %w", err)
+	if _, err := io.WriteString(w, formatCSV(rows, ',')); err != nil {
+		return fmt.Errorf("write CSV: %w", err)
 	}
 	return nil
 }

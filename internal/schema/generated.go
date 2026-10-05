@@ -341,6 +341,10 @@ type CSVXWorkbook struct {
 	// Sheets corresponds to the JSON schema field "sheets".
 	Sheets []CSVXWorkbookSheetsElem `json:"sheets" yaml:"sheets" mapstructure:"sheets"`
 
+	// Provenance of an imported workbook (spec/14-xlsx-interoperability.md, 14.1);
+	// also written to source/source.json.
+	Source *CSVXWorkbookSource `json:"source,omitempty,omitzero" yaml:"source,omitempty" mapstructure:"source,omitempty"`
+
 	// Version corresponds to the JSON schema field "version".
 	Version interface{} `json:"version" yaml:"version" mapstructure:"version"`
 
@@ -497,6 +501,145 @@ func (j *CSVXWorkbookSheetsElem) UnmarshalJSON(value []byte) error {
 		return err
 	}
 	*j = CSVXWorkbookSheetsElem(plain)
+	return nil
+}
+
+// Provenance of an imported workbook (spec/14-xlsx-interoperability.md, 14.1);
+// also written to source/source.json.
+type CSVXWorkbookSource struct {
+	// Authority corresponds to the JSON schema field "authority".
+	Authority CSVXWorkbookSourceAuthority `json:"authority" yaml:"authority" mapstructure:"authority"`
+
+	// Features corresponds to the JSON schema field "features".
+	Features CSVXWorkbookSourceFeatures `json:"features,omitempty,omitzero" yaml:"features,omitempty" mapstructure:"features,omitempty"`
+
+	// Filename corresponds to the JSON schema field "filename".
+	Filename string `json:"filename" yaml:"filename" mapstructure:"filename"`
+
+	// Format corresponds to the JSON schema field "format".
+	Format CSVXWorkbookSourceFormat `json:"format" yaml:"format" mapstructure:"format"`
+
+	// ImportedAt corresponds to the JSON schema field "importedAt".
+	ImportedAt string `json:"importedAt" yaml:"importedAt" mapstructure:"importedAt"`
+
+	// Importer corresponds to the JSON schema field "importer".
+	Importer string `json:"importer" yaml:"importer" mapstructure:"importer"`
+
+	// Mappings corresponds to the JSON schema field "mappings".
+	Mappings interface{} `json:"mappings,omitempty,omitzero" yaml:"mappings,omitempty" mapstructure:"mappings,omitempty"`
+
+	// Sha256 corresponds to the JSON schema field "sha256".
+	Sha256 string `json:"sha256" yaml:"sha256" mapstructure:"sha256"`
+
+	// Warnings corresponds to the JSON schema field "warnings".
+	Warnings []interface{} `json:"warnings,omitempty,omitzero" yaml:"warnings,omitempty" mapstructure:"warnings,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+type CSVXWorkbookSourceAuthority string
+
+const CSVXWorkbookSourceAuthorityCsvx CSVXWorkbookSourceAuthority = "csvx"
+const CSVXWorkbookSourceAuthorityOriginal CSVXWorkbookSourceAuthority = "original"
+
+var enumValues_CSVXWorkbookSourceAuthority = []interface{}{
+	"original",
+	"csvx",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CSVXWorkbookSourceAuthority) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_CSVXWorkbookSourceAuthority {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_CSVXWorkbookSourceAuthority, v)
+	}
+	*j = CSVXWorkbookSourceAuthority(v)
+	return nil
+}
+
+type CSVXWorkbookSourceFeatures map[string]interface{}
+
+type CSVXWorkbookSourceFormat string
+
+const CSVXWorkbookSourceFormatXlsm CSVXWorkbookSourceFormat = "xlsm"
+const CSVXWorkbookSourceFormatXlsx CSVXWorkbookSourceFormat = "xlsx"
+
+var enumValues_CSVXWorkbookSourceFormat = []interface{}{
+	"xlsx",
+	"xlsm",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CSVXWorkbookSourceFormat) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_CSVXWorkbookSourceFormat {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_CSVXWorkbookSourceFormat, v)
+	}
+	*j = CSVXWorkbookSourceFormat(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CSVXWorkbookSource) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["authority"]; raw != nil && !ok {
+		return fmt.Errorf("field authority in CSVXWorkbookSource: required")
+	}
+	if _, ok := raw["filename"]; raw != nil && !ok {
+		return fmt.Errorf("field filename in CSVXWorkbookSource: required")
+	}
+	if _, ok := raw["format"]; raw != nil && !ok {
+		return fmt.Errorf("field format in CSVXWorkbookSource: required")
+	}
+	if _, ok := raw["importedAt"]; raw != nil && !ok {
+		return fmt.Errorf("field importedAt in CSVXWorkbookSource: required")
+	}
+	if _, ok := raw["importer"]; raw != nil && !ok {
+		return fmt.Errorf("field importer in CSVXWorkbookSource: required")
+	}
+	if _, ok := raw["sha256"]; raw != nil && !ok {
+		return fmt.Errorf("field sha256 in CSVXWorkbookSource: required")
+	}
+	type Plain CSVXWorkbookSource
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if matched, _ := regexp.MatchString(`^[0-9a-f]{64}$`, string(plain.Sha256)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Sha256", `^[0-9a-f]{64}$`)
+	}
+	st := reflect.TypeOf(Plain{})
+	for i := range st.NumField() {
+		delete(raw, st.Field(i).Name)
+		delete(raw, strings.Split(st.Field(i).Tag.Get("json"), ",")[0])
+	}
+	if err := mapstructure.Decode(raw, &plain.AdditionalProperties); err != nil {
+		return err
+	}
+	*j = CSVXWorkbookSource(plain)
 	return nil
 }
 

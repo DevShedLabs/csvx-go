@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 )
 
 // Runs the csvx-spec vectors whose operations are "validate-package" and "round-trip" verbatim
@@ -26,7 +27,7 @@ func vectorsWithOperation(t *testing.T, operation string) []packageVector {
 	t.Helper()
 	spec := specDir(t)
 	var found []packageVector
-	for _, dir := range []string{"parsing", "invalid", "styles", "print"} {
+	for _, dir := range []string{"parsing", "invalid", "styles", "print", "values"} {
 		paths, _ := filepath.Glob(filepath.Join(spec, "tests", dir, "*.json"))
 		sort.Strings(paths)
 		for _, path := range paths {
@@ -107,6 +108,11 @@ func TestRoundTripVectors(t *testing.T) {
 	}
 	for _, vector := range vectors {
 		var input struct {
+			Sheet *struct {
+				Columns []Column                `json:"columns"`
+				Records [][]string              `json:"records"`
+				Cells   map[string]CellMetadata `json:"cells"`
+			} `json:"sheet"`
 			Style         json.RawMessage `json:"style"`
 			SheetMetadata *struct {
 				Name       string                  `json:"name"`
@@ -124,7 +130,10 @@ func TestRoundTripVectors(t *testing.T) {
 			t.Fatal(err)
 		}
 		workbook := base()
-		if input.Style != nil {
+		if input.Sheet != nil {
+			sheet := workbook.Sheets[0]
+			sheet.Columns, sheet.Records, sheet.Cells = input.Sheet.Columns, input.Sheet.Records, input.Sheet.Cells
+		} else if input.Style != nil {
 			var style Style
 			if err := json.Unmarshal(input.Style, &style); err != nil {
 				t.Fatalf("%s: %v", vector.ID, err)
@@ -147,6 +156,16 @@ func TestRoundTripVectors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: written package does not load: %v", vector.ID, err)
 		}
+		if input.Sheet != nil {
+			got := map[string]any{"columns": normalize(t, loaded.Sheets[0].Columns), "records": normalize(t, loaded.Sheets[0].Records)}
+			if input.Sheet.Cells != nil {
+				got["cells"] = normalize(t, loaded.Sheets[0].Cells)
+			}
+			if !reflect.DeepEqual(got, expected["sheet"]) {
+				t.Errorf("%s: sheet = %v; want %v", vector.ID, got, expected["sheet"])
+			}
+			continue
+		}
 		if input.Style != nil {
 			if got := normalize(t, loaded.Styles[0]); !reflect.DeepEqual(got, expected["style"]) {
 				t.Errorf("%s: style = %v; want %v", vector.ID, got, expected["style"])
@@ -161,6 +180,45 @@ func TestRoundTripVectors(t *testing.T) {
 		for key, want := range expected["sheetMetadata"].(map[string]any) {
 			if got := normalize(t, actual[key]); !reflect.DeepEqual(got, want) {
 				t.Errorf("%s: %s = %v; want %v", vector.ID, key, got, want)
+			}
+		}
+	}
+}
+
+// Writing the same workbook twice gives identical bytes (spec 01-container.md).
+func TestWriteTwiceVectors(t *testing.T) {
+	vectors := vectorsWithOperation(t, "write-twice")
+	if len(vectors) == 0 {
+		t.Fatal("no write-twice vectors found")
+	}
+	for _, vector := range vectors {
+		var input struct {
+			Packages []string `json:"packages"`
+		}
+		var expected struct {
+			Identical bool `json:"identical"`
+		}
+		if err := json.Unmarshal(vector.Input, &input); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(vector.Expected, &expected); err != nil {
+			t.Fatal(err)
+		}
+		for _, pkg := range input.Packages {
+			workbook, err := OpenDirectory(filepath.Join(specDir(t), pkg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var first, second bytes.Buffer
+			if err := WritePackageTo(workbook, &first); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(1100 * time.Millisecond)
+			if err := WritePackageTo(workbook, &second); err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Equal(first.Bytes(), second.Bytes()) != expected.Identical {
+				t.Errorf("%s: %s: identical = %v; want %v", vector.ID, pkg, bytes.Equal(first.Bytes(), second.Bytes()), expected.Identical)
 			}
 		}
 	}

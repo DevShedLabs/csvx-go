@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -81,5 +82,67 @@ func TestOpenRejectsInvalidNamedRanges(t *testing.T) {
 	}
 	if result := Validate(output); result.Valid || result.Errors[0].Code != "INVALID_NAMED_RANGE" {
 		t.Fatalf("Validate = %+v; want INVALID_NAMED_RANGE", result)
+	}
+}
+
+// Runs csvx-spec/tests/interop/xlsx-paper-size.json (operation "xlsx-to-csvx"): a paper size with no
+// CSVX equivalent is kept as xlsxPaperSize rather than mapped or dropped (spec 14.6).
+func TestXLSXImportKeepsUnmappedPaperSize(t *testing.T) {
+	spec := specDir(t)
+	raw, err := os.ReadFile(filepath.Join(spec, "tests", "interop", "xlsx-paper-size.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Input    string `json:"input"`
+		Expected struct {
+			Samples []map[string]any `json:"samples"`
+		} `json:"expected"`
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := InspectXLSX(filepath.Join(spec, "tests", "interop", vector.Input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workbook, err := importXLSXWorkbook(filepath.Join(spec, "tests", "interop", vector.Input), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sample := range vector.Expected.Samples {
+		sheet := findSheetByName(workbook, sample["sheet"].(string))
+		for key, want := range sample {
+			if key == "sheet" {
+				continue
+			}
+			got, _ := walk(map[string]any{"print": printMap(sheet)}, key)
+			if !reflect.DeepEqual(normalize(t, got), want) {
+				t.Errorf("%v %s = %v; want %v", sample["sheet"], key, normalize(t, got), want)
+			}
+		}
+	}
+}
+
+// A corrupted embedded XLSX source must never be offered for exact recovery (spec 14.1: a reader
+// MUST verify the hash first).
+func TestExportRefusesACorruptedEmbeddedSource(t *testing.T) {
+	spec := specDir(t)
+	packaged := filepath.Join(t.TempDir(), "book.csvx")
+	if err := Convert(filepath.Join(spec, "examples", "example.xlsx"), packaged); err != nil {
+		t.Fatal(err)
+	}
+	workbook, err := Open(packaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workbook.SourceBytes[len(workbook.SourceBytes)/2] ^= 0xFF // one flipped byte; the recorded hash is unchanged
+	corrupted := filepath.Join(t.TempDir(), "corrupted.csvx")
+	if err := WritePackage(workbook, corrupted); err != nil {
+		t.Fatal(err)
+	}
+	err = Convert(corrupted, filepath.Join(t.TempDir(), "out.xlsx"))
+	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("export of a corrupted source = %v; want a SHA-256 verification failure", err)
 	}
 }

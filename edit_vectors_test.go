@@ -16,8 +16,8 @@ import (
 // this engine (csvx-spec/AGENTS.md rule 3.4). Operations run with recalculation off because the
 // vectors compare the model as the operation leaves it (spec/15-edit-operations.md).
 
-func runEditOperation(operation string, workbook *Workbook, a map[string]any) (*Workbook, error) {
-	off := EditOptions{SkipRecalculate: true}
+func runEditOperation(operation string, workbook *Workbook, a map[string]any, recalculate bool) (*Workbook, error) {
+	off := EditOptions{SkipRecalculate: !recalculate}
 	str := func(key string) string { s, _ := a[key].(string); return s }
 	num := func(key string) int { n, _ := a[key].(float64); return int(n) }
 	strs := func(key string) []string {
@@ -100,8 +100,9 @@ func TestEditVectors(t *testing.T) {
 				Note      string `json:"note"`
 				Operation string `json:"operation"`
 				Input     struct {
-					Workbook json.RawMessage `json:"workbook"`
-					Args     map[string]any  `json:"args"`
+					Workbook    json.RawMessage `json:"workbook"`
+					Args        map[string]any  `json:"args"`
+					Recalculate bool            `json:"recalculate"`
 				} `json:"input"`
 				Expected map[string]any `json:"expected"`
 			} `json:"cases"`
@@ -126,7 +127,7 @@ func TestEditVectors(t *testing.T) {
 				}
 			}
 			before := normalize(t, workbook)
-			result, err := runEditOperation(operation, &workbook, c.Input.Args)
+			result, err := runEditOperation(operation, &workbook, c.Input.Args, c.Input.Recalculate)
 			var invalid *InvalidEditError
 			if valid, ok := c.Expected["valid"].(bool); ok && !valid {
 				if !errors.As(err, &invalid) {

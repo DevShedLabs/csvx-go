@@ -265,8 +265,12 @@ func xlsxCellValue(cell xlsxCell, shared []string) string {
 	if cell.Type == "inlineStr" {
 		return strings.Join(cell.Inline.Text, "")
 	}
-	if cell.Type == "b" && cell.Value == "1" {
-		return "TRUE"
+	if cell.Type == "b" {
+		// Spec 04-data-types.md: the literal forms of a boolean are exactly true and false.
+		if cell.Value == "1" || strings.EqualFold(cell.Value, "true") {
+			return "true"
+		}
+		return "false"
 	}
 	return cell.Value
 }
@@ -310,7 +314,7 @@ func formulaValue(value string) string {
 func typedValue(kind, value string) Value {
 	switch kind {
 	case "b":
-		return Value{Type: "boolean", Value: value == "TRUE" || value == "1"}
+		return Value{Type: "boolean", Value: value == "true" || value == "TRUE" || value == "1"}
 	case "e":
 		return Value{Type: "error", Code: csvxErrorCode(value)}
 	case "s", "str", "inlineStr":

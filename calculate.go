@@ -643,7 +643,7 @@ func RecalculateSheets(sheets map[string]CellMap, external func(name string) Cel
 				sheet = r.sheet
 			}
 			for _, candidate := range positions[sheet] {
-				if candidate.col >= r.fromCol && candidate.col <= r.toCol && candidate.row-1 >= r.fromRow && candidate.row-1 <= r.toRow {
+				if candidate.col >= r.fromCol && candidate.col <= r.toCol && candidate.row >= r.fromRow && candidate.row <= r.toRow {
 					node.deps = append(node.deps, candidate.id)
 				}
 			}
