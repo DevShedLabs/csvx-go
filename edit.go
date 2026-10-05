@@ -383,8 +383,8 @@ func renumberColumns(columns []Column) {
 	}
 }
 
-// InsertColumns inserts count blank columns before the column with letter at. The new columns are
-// named "Column N", N being the 1-based position at creation (spec/15).
+// InsertColumns inserts count blank columns before the column with letter at. The new columns
+// have the empty name (spec/03-sheets.md, spec/15).
 func InsertColumns(workbook *Workbook, sheet, at string, count int, options EditOptions) (*Workbook, error) {
 	if err := assertCount(count); err != nil {
 		return nil, err
@@ -409,7 +409,7 @@ func InsertColumns(workbook *Workbook, sheet, at string, count int, options Edit
 	next := applyAxisEdit(workbook, target, edit, func(s *Sheet) {
 		columns := append([]Column(nil), s.Columns[:index]...)
 		for i := 0; i < count; i++ {
-			columns = append(columns, Column{Name: "Column " + strconv.Itoa(index+i+1)})
+			columns = append(columns, Column{})
 		}
 		s.Columns = append(columns, s.Columns[index:]...)
 		renumberColumns(s.Columns)
@@ -475,7 +475,7 @@ func DeleteColumns(workbook *Workbook, sheet string, columns []string, options E
 // ---------------------------------------------------------------------------------------------
 // Sheets.
 
-// AddSheet appends an empty sheet: one column named "Column 1" and no data rows.
+// AddSheet appends an empty sheet: one column with the empty name and no data rows.
 func AddSheet(workbook *Workbook, options EditOptions) *Workbook {
 	ids, names := map[string]bool{}, map[string]bool{}
 	for _, sheet := range workbook.Sheets {
@@ -489,7 +489,7 @@ func AddSheet(workbook *Workbook, options EditOptions) *Workbook {
 	next := cloneWorkbook(workbook)
 	next.Sheets = append(next.Sheets, &Sheet{
 		ID: id, Name: fmt.Sprintf("Sheet %d", n), Path: "sheets/" + id + ".csv",
-		Columns: []Column{{ID: "A", Name: "Column 1"}}, Records: [][]string{}, Cells: map[string]CellMetadata{},
+		Columns: []Column{{ID: "A"}}, Records: [][]string{}, Cells: map[string]CellMetadata{},
 	})
 	return finish(next, options)
 }
@@ -546,7 +546,7 @@ func DeleteSheet(workbook *Workbook, sheet string, options EditOptions) (*Workbo
 func extendSheet(sheet *Sheet, rowNumber, column int) {
 	for len(sheet.Columns) <= column {
 		index := len(sheet.Columns)
-		sheet.Columns = append(sheet.Columns, Column{ID: columnID(index), Name: "Column " + strconv.Itoa(index+1)})
+		sheet.Columns = append(sheet.Columns, Column{ID: columnID(index)})
 		for r := range sheet.Records {
 			sheet.Records[r] = append(sheet.Records[r], "")
 		}
@@ -560,9 +560,6 @@ func setCellOn(sheet *Sheet, styles []Style, coordinate, text string) error {
 	column, rowNumber, err := parseCoordinate(coordinate)
 	if err != nil {
 		return err
-	}
-	if rowNumber == 1 && text == "" {
-		return invalidEdit("A column name must not be empty")
 	}
 	extendSheet(sheet, rowNumber, column)
 	isFormula := strings.HasPrefix(text, "=")

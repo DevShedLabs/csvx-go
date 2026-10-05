@@ -234,15 +234,11 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 		maxColumn = 1
 	}
 	// Worksheet row N is CSVX row N (spec/03-sheets.md, 14.7): row 1 is the CSV header row, whose cell
-	// text names the columns, and rows 2 and later are the data records. An empty header cell can't
-	// be a CSV header (it must be non-empty), so it is named after its column letter.
+	// text names the columns, and rows 2 and later are the data records. An empty header cell gives
+	// the column the empty name (14.7); nothing is invented for it.
 	columns := make([]Column, maxColumn)
 	for column := range columns {
-		name := values[cellReference(column, 0)]
-		if name == "" {
-			name = columnID(column)
-		}
-		columns[column] = Column{ID: columnID(column), Name: name, Width: columnWidths[column]}
+		columns[column] = Column{ID: columnID(column), Name: values[cellReference(column, 0)], Width: columnWidths[column]}
 	}
 	records := make([][]string, 0, maxRow)
 	for row := 1; row < maxRow; row++ {

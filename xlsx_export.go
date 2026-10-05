@@ -551,7 +551,13 @@ func (e *xlsxExporter) worksheet(sheet *Sheet, index int) ([]byte, error) {
 		if xf := e.xfIndex(metadata.Style, ""); xf > 0 {
 			style = ` s="` + strconv.Itoa(xf) + `"`
 		}
-		rowFor(1).cells = append(rowFor(1).cells, `<c r="`+coordinate+`"`+style+` t="s"><v>`+strconv.Itoa(e.sharedIndex(c.Name))+`</v></c>`)
+		switch {
+		case c.Name != "":
+			rowFor(1).cells = append(rowFor(1).cells, `<c r="`+coordinate+`"`+style+` t="s"><v>`+strconv.Itoa(e.sharedIndex(c.Name))+`</v></c>`)
+		case style != "":
+			// An empty header is an empty cell; keep its style if it has one.
+			rowFor(1).cells = append(rowFor(1).cells, `<c r="`+coordinate+`"`+style+`/>`)
+		}
 	}
 	for r, record := range sheet.Records {
 		for column := range sheet.Columns {

@@ -40,6 +40,12 @@ func formatCSV(rows [][]string, delimiter rune) string {
 	}
 	var out strings.Builder
 	for _, row := range rows {
+		// A record of exactly one empty field is written as "" so it is not mistaken for a blank
+		// line, which readers skip (spec 11.1, 11.2).
+		if len(row) == 1 && row[0] == "" {
+			out.WriteString("\"\"\n")
+			continue
+		}
 		for i, field := range row {
 			if i > 0 {
 				out.WriteRune(delimiter)

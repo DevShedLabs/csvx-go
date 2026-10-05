@@ -50,19 +50,13 @@ func IndicesForCoordinate(coordinate string) (column, row int, ok bool) {
 	return columnIndexFromID(coordinate[:i]), RowIndexFor(number), true
 }
 
-// RawCellText is a cell's raw text. For the header row that is the column name, except that a name
-// equal to the column's own letter is the placeholder an importer writes for an empty header cell
-// (spec/14-xlsx-interoperability.md) and reads as blank.
+// RawCellText is a cell's raw text. For the header row that is the column name, which may be empty.
 func RawCellText(sheet *Sheet, row, column int) string {
 	if row < 0 {
 		if column >= len(sheet.Columns) {
 			return ""
 		}
-		name := sheet.Columns[column].Name
-		if name == columnID(column) {
-			return ""
-		}
-		return name
+		return sheet.Columns[column].Name
 	}
 	if row >= len(sheet.Records) || column >= len(sheet.Records[row]) {
 		return ""

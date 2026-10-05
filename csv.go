@@ -18,11 +18,6 @@ func readCSV(r io.Reader) ([]string, [][]string, error) {
 	}
 
 	header := records[0]
-	for i, name := range header {
-		if name == "" {
-			return nil, nil, fmt.Errorf("CSV header column %d is empty", i+1)
-		}
-	}
 	for row, record := range records[1:] {
 		if len(record) != len(header) {
 			return nil, nil, fmt.Errorf("CSV row %d has %d fields; expected %d", row+2, len(record), len(header))

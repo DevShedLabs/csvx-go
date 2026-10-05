@@ -24,8 +24,8 @@ func TestXLSXImportRowOneIsTheHeader(t *testing.T) {
 	if got, want := sheet.Columns[0].Name, "Average salary for a Senior Software Engineer"; got != want {
 		t.Errorf("column A name = %q, want %q (XLSX A1 text)", got, want)
 	}
-	if got := sheet.Columns[1].Name; got != "B" {
-		t.Errorf("column B name = %q, want the column letter for an empty header cell", got)
+	if got := sheet.Columns[1].Name; got != "" {
+		t.Errorf("column B name = %q, want the empty name for an empty header cell (spec 14.7)", got)
 	}
 	if got := sheet.Columns[2].Name; got != "Minimum" {
 		t.Errorf("column C name = %q, want %q (XLSX C1 text)", got, "Minimum")

@@ -107,18 +107,12 @@ func ImportCSV(data []byte, options CSVImportOptions) (*Workbook, []ImportWarnin
 	for len(header) < width {
 		header = append(header, "")
 	}
-	for i := range header {
-		if header[i] == "" {
-			header[i] = fmt.Sprintf("Column %d", i+1)
-			if !options.NoHeader && i < headerWidth {
-				warnings = append(warnings, ImportWarning{Location: "record 1", Reason: fmt.Sprintf("header field %d is empty; named %q", i+1, header[i])})
-			}
-		}
-	}
+	// An empty header field is legal (spec 03-sheets.md): the column simply has the empty name, and
+	// the importer invents nothing.
 	for index, record := range records {
 		location := fmt.Sprintf("record %d", firstData+index)
 		if !options.NoHeader && len(record) > headerWidth {
-			warnings = append(warnings, ImportWarning{Location: location, Reason: fmt.Sprintf("has %d fields; header has %d, added columns named Column N", len(record), headerWidth)})
+			warnings = append(warnings, ImportWarning{Location: location, Reason: fmt.Sprintf("has %d fields; header has %d, added columns with the empty name", len(record), headerWidth)})
 		}
 		if len(record) < width {
 			warnings = append(warnings, ImportWarning{Location: location, Reason: fmt.Sprintf("has %d fields; padded to %d", len(record), width)})
