@@ -25,8 +25,47 @@ func (s *Style) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
+	// The generated decoder keeps unknown properties of the style itself, but not those nested in
+	// border or its edges (`diagonal`, an importer's `xlsxStyle`); capture them here so they round-trip
+	// (spec/08-styles.md).
+	var raw struct {
+		Border map[string]json.RawMessage `json:"border"`
+	}
+	if err := json.Unmarshal(data, &raw); err == nil && decoded.Border != nil {
+		known := map[string]bool{"style": true, "color": true, "top": true, "right": true, "bottom": true, "left": true}
+		if extra := unknownKeys(raw.Border, known); len(extra) > 0 {
+			decoded.Border.AdditionalProperties = extra
+		}
+		edges := map[string]*schema.BorderEdge{"top": decoded.Border.Top, "right": decoded.Border.Right, "bottom": decoded.Border.Bottom, "left": decoded.Border.Left}
+		for name, edge := range edges {
+			if edge == nil {
+				continue
+			}
+			var rawEdge map[string]json.RawMessage
+			if json.Unmarshal(raw.Border[name], &rawEdge) == nil {
+				if extra := unknownKeys(rawEdge, map[string]bool{"style": true, "color": true}); len(extra) > 0 {
+					edge.AdditionalProperties = extra
+				}
+			}
+		}
+	}
 	*s = Style(decoded)
 	return nil
+}
+
+// unknownKeys decodes the entries of raw whose names are not in known.
+func unknownKeys(raw map[string]json.RawMessage, known map[string]bool) map[string]any {
+	extra := map[string]any{}
+	for key, value := range raw {
+		if known[key] {
+			continue
+		}
+		var decoded any
+		if json.Unmarshal(value, &decoded) == nil {
+			extra[key] = decoded
+		}
+	}
+	return extra
 }
 
 // MarshalJSON writes the typed fields plus any preserved unknown properties (at the style level and

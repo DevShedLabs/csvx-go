@@ -93,6 +93,22 @@ func safeExtractionPath(root, name string) (string, error) {
 	return target, nil
 }
 
+// needsMetadata reports whether a sheet has anything the CSV cannot hold, so it needs a metadata
+// sidecar (spec/03-sheets.md): column types or widths, row heights, cell metadata, or print
+// settings. It is the single decision behind both the workbook.json reference and the file itself,
+// so they cannot disagree.
+func needsMetadata(sheet *Sheet) bool {
+	if sheet.MetadataPath != "" || len(sheet.Cells) > 0 || sheet.Print != nil || len(sheet.RowHeights) > 0 {
+		return true
+	}
+	for _, column := range sheet.Columns {
+		if column.Type != "" || column.Width != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // WritePackage writes a workbook to a deterministic CSVX ZIP package.
 func WritePackage(workbook *Workbook, output string) error {
 	if workbook == nil {
@@ -130,9 +146,12 @@ func WritePackageTo(workbook *Workbook, file io.Writer) error {
 		if path == "" {
 			path = "sheets/" + sheet.ID + ".csv"
 		}
-		metadataPath := sheet.MetadataPath
-		if metadataPath == "" && len(sheet.Cells) > 0 {
-			metadataPath = "sheets/" + sheet.ID + ".meta.json"
+		metadataPath := ""
+		if needsMetadata(sheet) {
+			metadataPath = sheet.MetadataPath
+			if metadataPath == "" {
+				metadataPath = "sheets/" + sheet.ID + ".meta.json"
+			}
 		}
 		document.Sheets = append(document.Sheets, SheetEntry{ID: sheet.ID, Name: sheet.Name, Path: path, Metadata: metadataPath})
 		manifest.Files = append(manifest.Files, path)
@@ -164,7 +183,7 @@ func WritePackageTo(workbook *Workbook, file io.Writer) error {
 			return err
 		}
 		resources[path] = body.Bytes()
-		if sheet.MetadataPath != "" || len(sheet.Cells) > 0 || sheet.Print != nil {
+		if needsMetadata(sheet) {
 			metadataPath := sheet.MetadataPath
 			if metadataPath == "" {
 				metadataPath = "sheets/" + sheet.ID + ".meta.json"
@@ -452,6 +471,18 @@ func applySheetMetadata(sheet *Sheet, metadataBody []byte, entry SheetEntry) (*S
 	if len(resource.Columns) > 0 {
 		if len(resource.Columns) != len(sheet.Columns) {
 			return nil, fmt.Errorf("sheet %q metadata column count does not match CSV", sheet.Name)
+		}
+		var raw struct {
+			Columns []struct {
+				Name *string `json:"name"`
+			} `json:"columns"`
+		}
+		if err := json.Unmarshal(metadataBody, &raw); err == nil {
+			for index, column := range raw.Columns {
+				if column.Name != nil && *column.Name != sheet.Columns[index].Name {
+					return nil, fmt.Errorf("COLUMN_NAME_MISMATCH: sheet %q column %s is %q in the CSV header but %q in its metadata", sheet.Name, columnID(index), sheet.Columns[index].Name, *column.Name)
+				}
+			}
 		}
 		sheet.Columns = resource.Columns
 	}

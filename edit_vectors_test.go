@@ -1,6 +1,8 @@
 package csvx
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -282,6 +284,7 @@ func checkEditResult(t *testing.T, name, operation string, result *Workbook, arg
 	}
 }
 
+// Runs csvx-spec/tests/invalid/named-range-*.json (operation "validate-named-ranges").
 func TestNamedRangeVectors(t *testing.T) {
 	paths, _ := filepath.Glob(filepath.Join(specDir(t, "tests", "invalid"), "named-range-*.json"))
 	if len(paths) == 0 {
@@ -337,5 +340,61 @@ func TestValidateWorkbookInMemory(t *testing.T) {
 	workbook.NamedRanges = []NamedRange{{Name: "A1", RefersTo: "=Sheet1!$A$1"}}
 	if result := ValidateWorkbook(workbook); result.Valid || result.Errors[0].Code != "INVALID_NAMED_RANGE" {
 		t.Fatalf("want INVALID_NAMED_RANGE, got %+v", result)
+	}
+}
+
+// Runs csvx-spec/tests/invalid/column-name-*.json (operation "load-sheet"): a one-sheet package is
+// built in memory from the vector's CSV and sidecar and loaded.
+func TestLoadSheetVectors(t *testing.T) {
+	paths, _ := filepath.Glob(filepath.Join(specDir(t, "tests", "invalid"), "column-name-*.json"))
+	if len(paths) == 0 {
+		t.Fatal("no load-sheet vectors found")
+	}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vector struct {
+			ID    string `json:"id"`
+			Input struct {
+				CSV      string         `json:"csv"`
+				Metadata map[string]any `json:"metadata"`
+			} `json:"input"`
+			Expected struct {
+				Valid  bool                    `json:"valid"`
+				Errors []struct{ Code string } `json:"errors"`
+			} `json:"expected"`
+		}
+		if err := json.Unmarshal(raw, &vector); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		meta := map[string]any{"id": "sheet-1", "name": "Sheet1"}
+		for k, v := range vector.Input.Metadata {
+			meta[k] = v
+		}
+		metaBody, _ := json.Marshal(meta)
+		var buffer bytes.Buffer
+		zw := zip.NewWriter(&buffer)
+		for name, body := range map[string]string{
+			"manifest.json":            `{"format":"csvx","version":"1.0","workbook":"workbook.json","files":[]}`,
+			"workbook.json":            `{"id":"book","version":"1.0","sheets":[{"id":"sheet-1","name":"Sheet1","path":"sheets/sheet-1.csv","metadata":"sheets/sheet-1.meta.json"}]}`,
+			"sheets/sheet-1.csv":       vector.Input.CSV,
+			"sheets/sheet-1.meta.json": string(metaBody),
+		} {
+			w, _ := zw.Create(name)
+			_, _ = w.Write([]byte(body))
+		}
+		_ = zw.Close()
+		_, loadErr := Load(bytes.NewReader(buffer.Bytes()), int64(buffer.Len()))
+		if (loadErr == nil) != vector.Expected.Valid {
+			t.Errorf("%s: valid = %v; want %v (%v)", vector.ID, loadErr == nil, vector.Expected.Valid, loadErr)
+			continue
+		}
+		if loadErr != nil {
+			if code := diagnosticForError(loadErr).Code; len(vector.Expected.Errors) != 1 || code != vector.Expected.Errors[0].Code {
+				t.Errorf("%s: code = %s; want %v", vector.ID, code, vector.Expected.Errors)
+			}
+		}
 	}
 }
