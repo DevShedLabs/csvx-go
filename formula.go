@@ -396,6 +396,11 @@ func (p *parser) finishReferenceOrRange(start *FormulaNode) (*FormulaNode, error
 	if err != nil {
 		return nil, err
 	}
+	// Core 1.0 has no three-dimensional ranges, and `B2:Sales!B10` is ambiguous (spec/06): a
+	// qualified second end needs the same qualifier on the first.
+	if end.Ref.HasSht && (!start.Ref.HasSht || !sameSheetName(start.Ref.Sheet, end.Ref.Sheet)) {
+		return nil, parseErrorf("A range's ends must be on the same sheet")
+	}
 	return &FormulaNode{Kind: NodeRange, Start: start, End: end}, nil
 }
 

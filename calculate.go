@@ -524,6 +524,15 @@ type RecalculateOptions struct {
 	ResolveSheet func(name string) CellMap
 }
 
+func sortedKeys(sheets map[string]CellMap) []string {
+	keys := make([]string, 0, len(sheets))
+	for name := range sheets {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func refCoordinate(ref CellRef) string { return ref.Column + strconv.Itoa(ref.Row+1) }
 
 type rangeRef struct {
@@ -587,15 +596,25 @@ type formulaCellPos struct {
 // cells that had a formula, keyed by sheet name and then coordinate.
 func RecalculateSheets(sheets map[string]CellMap, external func(name string) CellMap, namedRanges []NamedRange) map[string]map[string]Value {
 	names := buildNameTable(namedRanges)
+	// A qualifier matches a sheet ignoring ASCII case (spec/06); canon maps the folded spelling to
+	// the sheet's own name, and the first in sorted order wins if a caller passed names that collide.
+	canon := map[string]string{}
+	for _, name := range sortedKeys(sheets) {
+		if _, taken := canon[foldSheetName(name)]; !taken {
+			canon[foldSheetName(name)] = name
+		}
+	}
+	canonical := func(name string) string {
+		if own, ok := canon[foldSheetName(name)]; ok {
+			return own
+		}
+		return name
+	}
 	idOf := func(sheet, coordinate string) string { return sheet + "\n" + coordinate }
 	nodes := map[string]*calcNode{}
 	var ids []string
 	positions := map[string][]formulaCellPos{}
-	sheetNames := make([]string, 0, len(sheets))
-	for name := range sheets {
-		sheetNames = append(sheetNames, name)
-	}
-	sort.Strings(sheetNames) // deterministic evaluation order
+	sheetNames := sortedKeys(sheets) // deterministic evaluation order
 	for _, sheet := range sheetNames {
 		cells := sheets[sheet]
 		coordinates := make([]string, 0, len(cells))
@@ -631,7 +650,7 @@ func RecalculateSheets(sheets map[string]CellMap, external func(name string) Cel
 		for _, ref := range cells {
 			sheet := node.sheet
 			if ref.HasSht {
-				sheet = ref.Sheet
+				sheet = canonical(ref.Sheet)
 			}
 			if dep := idOf(sheet, refCoordinate(ref)); nodes[dep] != nil {
 				node.deps = append(node.deps, dep)
@@ -640,7 +659,7 @@ func RecalculateSheets(sheets map[string]CellMap, external func(name string) Cel
 		for _, r := range ranges {
 			sheet := node.sheet
 			if r.hasSheet {
-				sheet = r.sheet
+				sheet = canonical(r.sheet)
 			}
 			for _, candidate := range positions[sheet] {
 				if candidate.col >= r.fromCol && candidate.col <= r.toCol && candidate.row >= r.fromRow && candidate.row <= r.toRow {
@@ -693,7 +712,7 @@ func RecalculateSheets(sheets map[string]CellMap, external func(name string) Cel
 		return func(ref ReferenceRequest) Value {
 			sheet := own
 			if ref.HasSheet {
-				sheet = ref.Sheet
+				sheet = canonical(ref.Sheet)
 			}
 			cells, ok := sheets[sheet]
 			if !ok && ref.HasSheet && external != nil {

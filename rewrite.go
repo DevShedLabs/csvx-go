@@ -27,6 +27,20 @@ var (
 	bareSheetAt    = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)!`)
 )
 
+// foldSheetName lower-cases ASCII letters only. Sheet names are compared this way everywhere
+// (spec/02-workbook.md, 06-formulas.md): Unicode case folding differs between engines.
+func foldSheetName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, name)
+}
+
+// sameSheetName reports whether two sheet names are equal ignoring ASCII case.
+func sameSheetName(a, b string) bool { return foldSheetName(a) == foldSheetName(b) }
+
 // FormatSheetName formats a sheet name for use before `!`, quoting it unless it is a bare
 // identifier.
 func FormatSheetName(name string) string {
@@ -189,7 +203,7 @@ func RewriteFormulaForAxisEdit(formula, ownSheet, targetSheet string, edit AxisE
 		if !hasSheet {
 			sheet = ownSheet
 		}
-		if sheet != targetSheet {
+		if !sameSheetName(sheet, targetSheet) {
 			continue
 		}
 		if b == nil {
@@ -244,7 +258,7 @@ func RewriteFormulaForSheetChange(formula, oldName, newName string, deleted bool
 		if !hasSheet && b != nil {
 			sheet, hasSheet = b.sheet, b.hasSheet
 		}
-		if !hasSheet || sheet != oldName {
+		if !hasSheet || !sameSheetName(sheet, oldName) {
 			continue
 		}
 		if deleted {

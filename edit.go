@@ -479,10 +479,10 @@ func DeleteColumns(workbook *Workbook, sheet string, columns []string, options E
 func AddSheet(workbook *Workbook, options EditOptions) *Workbook {
 	ids, names := map[string]bool{}, map[string]bool{}
 	for _, sheet := range workbook.Sheets {
-		ids[sheet.ID], names[sheet.Name] = true, true
+		ids[sheet.ID], names[foldSheetName(sheet.Name)] = true, true
 	}
 	n := len(workbook.Sheets) + 1
-	for ids[fmt.Sprintf("sheet-%d", n)] || names[fmt.Sprintf("Sheet %d", n)] {
+	for ids[fmt.Sprintf("sheet-%d", n)] || names[foldSheetName(fmt.Sprintf("Sheet %d", n))] {
 		n++
 	}
 	id := fmt.Sprintf("sheet-%d", n)
@@ -513,7 +513,7 @@ func RenameSheet(workbook *Workbook, sheet, name string, options EditOptions) (*
 		return nil, invalidEdit("Invalid sheet name: %q", name)
 	}
 	for i, other := range workbook.Sheets {
-		if i != target && other.Name == name {
+		if i != target && sameSheetName(other.Name, name) {
 			return nil, invalidEdit("Sheet name already in use: %s", name)
 		}
 	}
