@@ -176,7 +176,10 @@ func indexedFont(fonts []xlsxFont, id string) (map[string]any, bool) {
 		font["name"] = source.Name[0].Value
 	}
 	if len(source.Size) > 0 {
-		font["size"] = source.Size[0].Value
+		// spec/08-styles.md: size is a number of points, never a string.
+		if size, err := strconv.ParseFloat(source.Size[0].Value, 64); err == nil && size > 0 {
+			font["size"] = size
+		}
 	}
 	if len(source.Bold) > 0 {
 		font["bold"] = true
