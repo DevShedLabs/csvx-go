@@ -302,6 +302,9 @@ func OpenDirectory(directory string) (*Workbook, error) {
 	if workbookDoc.Version != "1.0" || len(workbookDoc.Sheets) == 0 {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
+	if err := checkSheetNames(workbookDoc.Sheets); err != nil {
+		return nil, err
+	}
 	if problems := ValidateNamedRanges(workbookDoc.NamedRanges); len(problems) > 0 {
 		return nil, &InvalidNamedRangeError{Diagnostics: problems}
 	}
@@ -385,6 +388,9 @@ func Load(reader io.ReaderAt, size int64) (*Workbook, error) {
 		return nil, fmt.Errorf("invalid workbook resource")
 	}
 
+	if err := checkSheetNames(workbookDoc.Sheets); err != nil {
+		return nil, err
+	}
 	if problems := ValidateNamedRanges(workbookDoc.NamedRanges); len(problems) > 0 {
 		return nil, &InvalidNamedRangeError{Diagnostics: problems}
 	}
@@ -554,4 +560,18 @@ func columnID(index int) string {
 		index = index/26 - 1
 	}
 	return string(result)
+}
+
+// checkSheetNames rejects sheet names that collide ignoring ASCII case (spec/02-workbook.md):
+// formulas find a sheet by name, so two that differ only in case would be ambiguous.
+func checkSheetNames(sheets []SheetEntry) error {
+	seen := map[string]string{}
+	for _, sheet := range sheets {
+		key := foldSheetName(sheet.Name)
+		if first, taken := seen[key]; taken {
+			return fmt.Errorf("DUPLICATE_SHEET_NAME: sheet %q has the same name as %q, ignoring case", sheet.Name, first)
+		}
+		seen[key] = sheet.Name
+	}
+	return nil
 }

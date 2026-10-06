@@ -66,6 +66,8 @@ func diagnosticForError(err error) Diagnostic {
 		code = "MISSING_MANIFEST"
 	case containsAny(message, "COLUMN_NAME_MISMATCH"):
 		code = "COLUMN_NAME_MISMATCH"
+	case containsAny(message, "DUPLICATE_SHEET_NAME"):
+		code = "DUPLICATE_SHEET_NAME"
 	case containsAny(message, "INVALID_NAMED_RANGE"):
 		code = "INVALID_NAMED_RANGE"
 	case containsAny(message, "missing package entry", "missing manifest", "missing workbook"):

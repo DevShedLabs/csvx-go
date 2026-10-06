@@ -146,3 +146,71 @@ func TestExportRefusesACorruptedEmbeddedSource(t *testing.T) {
 		t.Fatalf("export of a corrupted source = %v; want a SHA-256 verification failure", err)
 	}
 }
+
+// Runs csvx-spec/tests/interop/xlsx-cross-sheet.json (operation "xlsx-to-csvx", spec 14.11) against
+// examples/cross-sheet.xlsx: qualifiers are written as spec 06 requires, a three-dimensional
+// reference and a reference into another workbook are dropped with a warning and keep their cached
+// result, and the written package validates against the schemas.
+func TestXLSXImportCrossSheetVector(t *testing.T) {
+	spec := specDir(t)
+	raw, err := os.ReadFile(filepath.Join(spec, "tests", "interop", "xlsx-cross-sheet.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Input    string `json:"input"`
+		Expected struct {
+			SchemaValid bool `json:"schemaValid"`
+			Formulas    []struct{ Sheet, Cell, Formula string }
+			Values      []struct {
+				Sheet, Cell, Type string
+				Value             any
+			}
+			Warnings []struct{ Feature, Path string }
+		} `json:"expected"`
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "cross.csvx")
+	if err := Convert(filepath.Join(spec, "tests", "interop", vector.Input), output); err != nil {
+		t.Fatal(err)
+	}
+	workbook, err := Open(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range vector.Expected.Formulas {
+		if got := findSheetByName(workbook, want.Sheet).Cells[want.Cell].Formula; got != want.Formula {
+			t.Errorf("%s!%s formula = %q; want %q", want.Sheet, want.Cell, got, want.Formula)
+		}
+	}
+	for _, want := range vector.Expected.Values {
+		sheet := findSheetByName(workbook, want.Sheet)
+		if formula := sheet.Cells[want.Cell].Formula; formula != "" {
+			t.Errorf("%s!%s kept formula %q; want none", want.Sheet, want.Cell, formula)
+		}
+		got := normalize(t, BuildCellMap(sheet, workbook.Styles)[want.Cell].Value)
+		if !reflect.DeepEqual(got, map[string]any{"type": want.Type, "value": want.Value}) {
+			t.Errorf("%s!%s = %v; want %s %v", want.Sheet, want.Cell, got, want.Type, want.Value)
+		}
+	}
+	var warnings []struct{ Feature, Path string }
+	for _, w := range workbook.Source.Warnings {
+		if w.Feature == "formula" {
+			warnings = append(warnings, struct{ Feature, Path string }{w.Feature, w.Path})
+		}
+	}
+	if !reflect.DeepEqual(warnings, vector.Expected.Warnings) {
+		t.Errorf("warnings = %v; want %v", warnings, vector.Expected.Warnings)
+	}
+	if vector.Expected.SchemaValid {
+		node, err := exec.LookPath("node")
+		if err != nil {
+			t.Skip("node not available; cannot run csvx-spec/validator")
+		}
+		if out, err := exec.Command(node, filepath.Join(spec, "validator", "bin", "csvx-validate.mjs"), output).CombinedOutput(); err != nil {
+			t.Fatalf("validator rejected package: %v\n%s", err, out)
+		}
+	}
+}

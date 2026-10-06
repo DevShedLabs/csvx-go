@@ -82,18 +82,21 @@ func importXLSXWorkbook(filename string, inspection *XLSXInspection) (*Workbook,
 		return nil, fmt.Errorf("decode workbook: %w", err)
 	}
 	workbook := &Workbook{ID: strings.TrimSuffix(path.Base(filename), path.Ext(filename)), Version: "1.0", Styles: exportStyles(styles)}
+	var formulaDiagnostics []XLSXDiagnostic
 	for index, sheetPath := range paths {
-		sheet, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles, xlsxBool(book.WorkbookPr.Date1904))
+		sheet, formulaWarnings, err := importXLSXSheet(files[sheetPath], names[index], index, shared, styles, xlsxBool(book.WorkbookPr.Date1904))
 		if err != nil {
 			return nil, fmt.Errorf("import sheet %q: %w", names[index], err)
 		}
 		applyXLSXPrintNames(sheet, index, book.DefinedNames)
 		workbook.Sheets = append(workbook.Sheets, sheet)
+		formulaDiagnostics = append(formulaDiagnostics, formulaWarnings...)
 	}
 	if len(workbook.Sheets) == 0 {
 		return nil, fmt.Errorf("XLSX contains no worksheets")
 	}
 	workbook.NamedRanges, workbook.importWarnings = importXLSXDefinedNames(book.DefinedNames)
+	workbook.importWarnings = append(workbook.importWarnings, formulaDiagnostics...)
 	return workbook, nil
 }
 
@@ -167,11 +170,12 @@ func xlsxSheetPaths(files map[string][]byte) ([]string, []string, error) {
 	return names, paths, nil
 }
 
-func importXLSXSheet(body []byte, name string, index int, shared []string, styles map[string]map[string]any, date1904 bool) (*Sheet, error) {
+func importXLSXSheet(body []byte, name string, index int, shared []string, styles map[string]map[string]any, date1904 bool) (*Sheet, []XLSXDiagnostic, error) {
 	var worksheet xlsxWorksheet
 	if err := xml.Unmarshal(body, &worksheet); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var warnings []XLSXDiagnostic
 	maxColumn, maxRow := 0, 0
 	values := make(map[string]string)
 	metadata := make(map[string]CellMetadata)
@@ -219,9 +223,13 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 			}
 			values[ref] = value
 			if cell.Formula != "" || cell.Style != "" {
-				cellMetadata.Formula, cellMetadata.Style = formulaValue(cell.Formula), xlsxStyleRef(cell.Style)
+				formula, warning := importXLSXFormula(name, ref, cell.Formula)
+				if warning != nil {
+					warnings = append(warnings, *warning)
+				}
+				cellMetadata.Formula, cellMetadata.Style = formula, xlsxStyleRef(cell.Style)
 			}
-			if cell.Formula != "" {
+			if cellMetadata.Formula != "" {
 				cached := typedValue(cell.Type, value)
 				cellMetadata.Cached = &cached
 			}
@@ -248,7 +256,7 @@ func importXLSXSheet(body []byte, name string, index int, shared []string, style
 		}
 		records = append(records, record)
 	}
-	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, RowHeights: rowHeights, Print: printFromWorksheet(worksheet.xlsxPrint), Cells: metadata}, nil
+	return &Sheet{ID: fmt.Sprintf("sheet-%d", index+1), Name: name, Columns: columns, Records: records, RowHeights: rowHeights, Print: printFromWorksheet(worksheet.xlsxPrint), Cells: metadata}, warnings, nil
 }
 
 func xlsxCellValue(cell xlsxCell, shared []string) string {

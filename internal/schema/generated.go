@@ -229,7 +229,7 @@ type CSVXStylesStylesElem struct {
 	Fill CSVXStylesStylesElemFill `json:"fill,omitempty,omitzero" yaml:"fill,omitempty" mapstructure:"fill,omitempty"`
 
 	// Font corresponds to the JSON schema field "font".
-	Font CSVXStylesStylesElemFont `json:"font,omitempty,omitzero" yaml:"font,omitempty" mapstructure:"font,omitempty"`
+	Font *CSVXStylesStylesElemFont `json:"font,omitempty,omitzero" yaml:"font,omitempty" mapstructure:"font,omitempty"`
 
 	// Id corresponds to the JSON schema field "id".
 	Id string `json:"id" yaml:"id" mapstructure:"id"`
@@ -269,7 +269,53 @@ type CSVXStylesStylesElemBorder struct {
 
 type CSVXStylesStylesElemFill map[string]interface{}
 
-type CSVXStylesStylesElemFont map[string]interface{}
+type CSVXStylesStylesElemFont struct {
+	// Bold corresponds to the JSON schema field "bold".
+	Bold *bool `json:"bold,omitempty,omitzero" yaml:"bold,omitempty" mapstructure:"bold,omitempty"`
+
+	// Color corresponds to the JSON schema field "color".
+	Color *string `json:"color,omitempty,omitzero" yaml:"color,omitempty" mapstructure:"color,omitempty"`
+
+	// Italic corresponds to the JSON schema field "italic".
+	Italic *bool `json:"italic,omitempty,omitzero" yaml:"italic,omitempty" mapstructure:"italic,omitempty"`
+
+	// Name corresponds to the JSON schema field "name".
+	Name *string `json:"name,omitempty,omitzero" yaml:"name,omitempty" mapstructure:"name,omitempty"`
+
+	// Font size in points (spec/08-styles.md); default 11.
+	Size *float64 `json:"size,omitempty,omitzero" yaml:"size,omitempty" mapstructure:"size,omitempty"`
+
+	// Underline corresponds to the JSON schema field "underline".
+	Underline *bool `json:"underline,omitempty,omitzero" yaml:"underline,omitempty" mapstructure:"underline,omitempty"`
+
+	AdditionalProperties interface{} `mapstructure:",remain"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *CSVXStylesStylesElemFont) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	type Plain CSVXStylesStylesElemFont
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if plain.Size != nil && 0 >= *plain.Size {
+		return fmt.Errorf("field %s: must be > %v", "size", 0)
+	}
+	st := reflect.TypeOf(Plain{})
+	for i := range st.NumField() {
+		delete(raw, st.Field(i).Name)
+		delete(raw, strings.Split(st.Field(i).Tag.Get("json"), ",")[0])
+	}
+	if err := mapstructure.Decode(raw, &plain.AdditionalProperties); err != nil {
+		return err
+	}
+	*j = CSVXStylesStylesElemFont(plain)
+	return nil
+}
 
 type CSVXStylesStylesElemProtection map[string]interface{}
 

@@ -1,6 +1,7 @@
 package csvx
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"sort"
@@ -142,7 +143,13 @@ func styleFromMap(id string, source map[string]any) Style {
 		style.NumberFormat = &value
 	}
 	if value, ok := source["font"].(map[string]any); ok {
-		style.Font = value
+		// Through the generated type, so size is a number and an unknown key is kept (spec/08-styles.md).
+		if body, err := json.Marshal(value); err == nil {
+			var font schema.CSVXStylesStylesElemFont
+			if json.Unmarshal(body, &font) == nil {
+				style.Font = &font
+			}
+		}
 	}
 	if value, ok := source["fill"].(map[string]any); ok {
 		style.Fill = value

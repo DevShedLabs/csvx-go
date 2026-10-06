@@ -280,7 +280,7 @@ func checkEditResult(t *testing.T, name, operation string, result *Workbook, arg
 	if e["idUnique"] == true && !unique(func(s *Sheet) string { return s.ID }) {
 		t.Errorf("%s: sheet ids not unique", name)
 	}
-	if e["nameUnique"] == true && !unique(func(s *Sheet) string { return s.Name }) {
+	if e["nameUnique"] == true && !unique(func(s *Sheet) string { return foldSheetName(s.Name) }) {
 		t.Errorf("%s: sheet names not unique", name)
 	}
 }
